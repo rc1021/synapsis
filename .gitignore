@@ -1,0 +1,33 @@
+# OS
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Environment (secrets)
+.env
+
+# Logs
+logs/
+*.log
+
+# Generated plist (built by ctl.sh install)
+app/ai.synapsis.plist
+
+# Multi-workspace: per-user runtime data
+app/workspaces/data/*/
+app/workspaces/index/*
+!app/workspaces/index/.gitkeep
+app/workspaces/invites/*
+!app/workspaces/invites/.gitkeep
+app/workspaces/bind-tokens/*
+!app/workspaces/bind-tokens/.gitkeep
+
+# Scheduler runtime
+app/scheduler/job-queue/*
+!app/scheduler/job-queue/.gitkeep
+app/scheduler/markers/
+
+# Legacy
+app/workspace/
+app/discord-bridge/

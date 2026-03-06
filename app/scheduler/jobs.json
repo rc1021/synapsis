@@ -1,0 +1,31 @@
+{
+  "jobs": [
+    {
+      "id": "heartbeat",
+      "name": "System health check",
+      "type": "shell",
+      "schedule": "*/30 * * * *",
+      "enabled": true,
+      "shell": {
+        "command": "which claude >/dev/null 2>&1 && echo HEARTBEAT_OK || echo HEARTBEAT_FAIL:claude_not_found"
+      },
+      "notify": {
+        "when": "not_match",
+        "match": "HEARTBEAT_OK",
+        "via": "discord"
+      },
+      "timeout": 10000
+    },
+    {
+      "id": "cleanup-expired-tokens",
+      "name": "Clean up expired invites and bind tokens",
+      "type": "shell",
+      "schedule": "0 4 * * *",
+      "enabled": true,
+      "shell": {
+        "command": "find workspaces/invites -type f -name '*.json' -mtime +1 -delete 2>/dev/null; find workspaces/bind-tokens -type f -name '*.json' -mtime +1 -delete 2>/dev/null; echo CLEANUP_OK"
+      },
+      "timeout": 30000
+    }
+  ]
+}
