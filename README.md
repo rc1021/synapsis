@@ -14,14 +14,48 @@ Synapsis connects an AI to your messaging platforms and builds a living relation
 - **Multi-channel** — Discord today, Telegram and WhatsApp planned
 - **Provider-agnostic** — Claude CLI, Claude API, extensible to Gemini, Codex, Copilot, and more
 
-## Quick start
+## Install
+
+One-liner:
 
 ```bash
-cd app
-cp .env.example .env   # fill in DISCORD_TOKEN, CLAUDE_PATH, etc.
-npm install
-npm start
+curl -fsSL https://synapsis.ai/install.sh | bash
 ```
+
+The script will clone the repo, install dependencies, walk you through `.env` setup, and optionally install as a macOS background service.
+
+Custom install path:
+
+```bash
+SYNAPSIS_DIR=/opt/synapsis curl -fsSL https://synapsis.ai/install.sh | bash
+```
+
+### Manual setup
+
+```bash
+git clone https://github.com/rc1021/synapsis.git
+cd synapsis/app
+cp .env.example .env   # fill in DISCORD_TOKEN, AI_PROVIDER, etc.
+npm install
+npm start              # run in foreground
+```
+
+### Service management (macOS)
+
+```bash
+./app/ctl.sh install   # generate plist, install launchd service, start
+./app/ctl.sh status    # check if running
+./app/ctl.sh logs      # tail live logs
+./app/ctl.sh restart   # restart service
+./app/ctl.sh stop      # stop service
+./app/ctl.sh uninstall # stop + remove plist
+```
+
+### Prerequisites
+
+- Node.js v22+
+- [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli) (if using `AI_PROVIDER=claude-cli`)
+- Discord bot token ([Developer Portal](https://discord.com/developers/applications))
 
 ## Architecture
 
