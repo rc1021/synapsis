@@ -229,34 +229,22 @@ tar xzf "$TMPDIR_DL/synapsis.tar.gz" -C "$TMPDIR_DL"
 # Prepare install directory
 mkdir -p "$INSTALL_DIR"
 
-# User data paths to preserve across updates (relative to app/)
-PRESERVE_PATHS=".env workspaces logs scheduler/markers scheduler/job-queue scheduler/logs"
-
-# Preserve user data on update
+# Copy new files — exclude user data directories so they are never touched
 if [ "$IS_UPDATE" = true ]; then
-  info "Preserving user data..."
-  for preserve in $PRESERVE_PATHS; do
-    if [ -e "$INSTALL_DIR/app/$preserve" ]; then
-      mkdir -p "$TMPDIR_DL/_preserve/$(dirname "$preserve")"
-      mv "$INSTALL_DIR/app/$preserve" "$TMPDIR_DL/_preserve/$preserve"
-    fi
-  done
+  info "Updating code (preserving user data)..."
+  rsync -a --delete \
+    --exclude '.env' \
+    --exclude 'workspaces/' \
+    --exclude 'logs/' \
+    --exclude 'scheduler/markers/' \
+    --exclude 'scheduler/job-queue/' \
+    --exclude 'scheduler/logs/' \
+    --exclude 'node_modules/' \
+    "$TMPDIR_DL/$STRIP_PREFIX/app/" "$INSTALL_DIR/app/"
+else
+  cp -R "$TMPDIR_DL/$STRIP_PREFIX/app" "$INSTALL_DIR/app"
 fi
-
-# Copy new files
-rm -rf "$INSTALL_DIR/app" "$INSTALL_DIR/install.sh" "$INSTALL_DIR/README.md"
-cp -R "$TMPDIR_DL/$STRIP_PREFIX/app" "$INSTALL_DIR/app"
 cp -f "$TMPDIR_DL/$STRIP_PREFIX/install.sh" "$INSTALL_DIR/install.sh" 2>/dev/null || true
-
-# Restore preserved data
-if [ "$IS_UPDATE" = true ]; then
-  for preserve in $PRESERVE_PATHS; do
-    if [ -e "$TMPDIR_DL/_preserve/$preserve" ]; then
-      mkdir -p "$INSTALL_DIR/app/$(dirname "$preserve")"
-      mv "$TMPDIR_DL/_preserve/$preserve" "$INSTALL_DIR/app/$preserve"
-    fi
-  done
-fi
 
 cd "$INSTALL_DIR/app"
 
