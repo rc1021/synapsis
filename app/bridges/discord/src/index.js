@@ -99,24 +99,87 @@ const DEDUP_TTL = 60000;
 const slashCommands = [
   new SlashCommandBuilder()
     .setName('new')
-    .setDescription('Start a new conversation (clear current session)'),
+    .setDescription('Start a new conversation (clear current session)')
+    .setDescriptionLocalizations({
+      'zh-TW': '開始新對話（清除目前 session）',
+      'zh-CN': '开始新对话（清除当前 session）',
+      ja: '新しい会話を開始（現在のセッションをクリア）',
+      ko: '새 대화 시작 (현재 세션 초기화)',
+    }),
   new SlashCommandBuilder()
     .setName('reset')
-    .setDescription('Clear current session'),
+    .setDescription('Clear current session')
+    .setDescriptionLocalizations({
+      'zh-TW': '清除目前 session',
+      'zh-CN': '清除当前 session',
+      ja: '現在のセッションをクリア',
+      ko: '현재 세션 초기화',
+    }),
   new SlashCommandBuilder()
     .setName('connection')
     .setDescription('Register with an invite code')
-    .addStringOption(opt => opt.setName('code').setDescription('Invite code').setRequired(true)),
+    .setDescriptionLocalizations({
+      'zh-TW': '用邀請碼註冊',
+      'zh-CN': '用邀请码注册',
+      ja: '招待コードで登録',
+      ko: '초대 코드로 등록',
+    })
+    .addStringOption(opt => opt
+      .setName('code')
+      .setDescription('Invite code')
+      .setDescriptionLocalizations({
+        'zh-TW': '邀請碼',
+        'zh-CN': '邀请码',
+        ja: '招待コード',
+        ko: '초대 코드',
+      })
+      .setRequired(true)),
   new SlashCommandBuilder()
     .setName('share-code')
-    .setDescription('Generate an invite code to share'),
+    .setDescription('Generate an invite code to share')
+    .setDescriptionLocalizations({
+      'zh-TW': '產生邀請碼分享給別人',
+      'zh-CN': '生成邀请码分享给别人',
+      ja: '共有用の招待コードを生成',
+      ko: '공유할 초대 코드 생성',
+    }),
   new SlashCommandBuilder()
     .setName('bind-token')
-    .setDescription('Generate a token to bind another bridge account'),
+    .setDescription('Generate a token to bind another bridge account')
+    .setDescriptionLocalizations({
+      'zh-TW': '產生跨平台帳號綁定 token',
+      'zh-CN': '生成跨平台账号绑定 token',
+      ja: '別プラットフォームのアカウント連携トークンを生成',
+      ko: '다른 플랫폼 계정 연결 토큰 생성',
+    }),
   new SlashCommandBuilder()
     .setName('bind')
     .setDescription('Bind this account to an existing workspace')
-    .addStringOption(opt => opt.setName('token').setDescription('Bind token').setRequired(true)),
+    .setDescriptionLocalizations({
+      'zh-TW': '將此帳號綁定到已有的工作空間',
+      'zh-CN': '将此账号绑定到已有的工作空间',
+      ja: 'このアカウントを既存のワークスペースに連携',
+      ko: '이 계정을 기존 워크스페이스에 연결',
+    })
+    .addStringOption(opt => opt
+      .setName('token')
+      .setDescription('Bind token')
+      .setDescriptionLocalizations({
+        'zh-TW': '綁定 token',
+        'zh-CN': '绑定 token',
+        ja: '連携トークン',
+        ko: '바인딩 토큰',
+      })
+      .setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('Show available commands')
+    .setDescriptionLocalizations({
+      'zh-TW': '顯示可用指令',
+      'zh-CN': '显示可用命令',
+      ja: '利用可能なコマンドを表示',
+      ko: '사용 가능한 명령어 표시',
+    }),
 ];
 
 async function fetchReferencedContent(message) {
@@ -244,6 +307,22 @@ function setupEventHandlers() {
     });
 
     if (result) {
+      // Append server invite link for /share-code
+      if (commandName === 'share-code' || commandName === 'sharecode') {
+        try {
+          // Find a text channel in any mutual guild to create an invite
+          const guild = client.guilds.cache.find(g => g.members.cache.has(userId));
+          if (guild) {
+            const channel = guild.channels.cache.find(c => c.isTextBased() && !c.isThread() && c.permissionsFor(guild.members.me)?.has('CreateInstantInvite'));
+            if (channel) {
+              const invite = await channel.createInvite({ maxAge: 86400, maxUses: 1, unique: true });
+              result.reply += `\n\nServer invite (24hr, one-time use):\n${invite.url}\n\nSend both to your friend — they join the server first, then use the invite code.`;
+            }
+          }
+        } catch (err) {
+          log.debug(`Could not create server invite: ${err.message}`);
+        }
+      }
       await interaction.reply({ content: result.reply, ephemeral: !!result.ephemeral });
       log.info(`/${commandName} from ${interaction.user.tag}: ${result.reply.slice(0, 100)}`);
     } else {
@@ -609,6 +688,32 @@ function setupEventHandlers() {
       await message.channel.send(errSanitized.safe ? errSanitized.text : 'Something went wrong.').catch(() => {});
     }
   });
+
+  // --- Welcome DM for new server members ---
+  client.on('guildMemberAdd', async (member) => {
+    if (member.user.bot) return;
+
+    const isRegistered = !!wm.readIndex('discord', member.user.id);
+
+    try {
+      const dm = await member.createDM();
+      if (isRegistered) {
+        await dm.send(`Hey! Welcome to **${member.guild.name}** 👋`);
+      } else {
+        await dm.send(
+          `Hey! Welcome to **${member.guild.name}** 👋\n\n` +
+          `I'm **Synapsis** — an AI companion that grows with you.\n\n` +
+          `To get started, you'll need an invite code from someone who's already here. ` +
+          `Once you have one, send me:\n` +
+          `\`/connection <your-invite-code>\`\n\n` +
+          `Type \`/help\` to see all available commands.`
+        );
+      }
+      log.info(`Welcome DM sent to ${member.user.tag} (registered=${isRegistered})`);
+    } catch (err) {
+      log.debug(`Could not send welcome DM to ${member.user.tag}: ${err.message}`);
+    }
+  });
 }
 
 async function start() {
@@ -623,6 +728,7 @@ async function start() {
   client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.DirectMessages,
       GatewayIntentBits.MessageContent,
