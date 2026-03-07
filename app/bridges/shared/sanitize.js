@@ -20,6 +20,14 @@ function escapeRegExp(str) {
  * @param {string} [wsPath] - Absolute workspace path (used to convert to relative paths)
  * @returns {{ safe: boolean, text: string }}
  */
+// Extract system username from HOME to redact from output
+const _homeUser = (() => {
+  const home = process.env.HOME || require('os').homedir();
+  const parts = home.split('/').filter(Boolean);
+  // /Users/<name> or /home/<name> — grab the leaf
+  return parts.length >= 2 ? parts[parts.length - 1] : null;
+})();
+
 function sanitizeOutput(text, wsPath) {
   let result = text;
 
@@ -28,6 +36,11 @@ function sanitizeOutput(text, wsPath) {
     const wsWithSlash = wsPath.endsWith('/') ? wsPath : wsPath + '/';
     result = result.replace(new RegExp(escapeRegExp(wsWithSlash), 'g'), '');
     result = result.replace(new RegExp(escapeRegExp(wsPath), 'g'), '.');
+  }
+
+  // Redact system username wherever it appears (path fragments, casual mentions)
+  if (_homeUser && _homeUser.length >= 3) {
+    result = result.replace(new RegExp(escapeRegExp(_homeUser), 'gi'), '[user]');
   }
 
   // Detect infrastructure leaks — block if found
