@@ -65,8 +65,8 @@ Service management:
 - `SESSION_TTL_MINUTES` — Session expiration (default: 60)
 - `MAX_CONCURRENCY` — Max parallel AI processes (default: 3)
 - `CLAUDE_TIMEOUT` — Hard timeout in ms (default: 300000)
-- `AI_PROVIDER` — AI backend: `claude-cli` (default) | `claude-api`
-- `ANTHROPIC_API_KEY` — Required when `AI_PROVIDER=claude-api`
+- `AI_PROVIDER` — AI backend: `claude-api` (default) | `claude-cli` (personal/dev only)
+- `ANTHROPIC_API_KEY` — Required for default `claude-api` provider
 
 ## Architecture patterns
 

@@ -15,11 +15,11 @@ function register(name, factory) {
 
 /**
  * Get a provider instance by name. Lazy-initializes on first access.
- * @param {string} [name] - Provider name. Defaults to AI_PROVIDER env or 'claude-cli'.
+ * @param {string} [name] - Provider name. Defaults to AI_PROVIDER env or 'claude-api'.
  * @returns {import('./base').BaseProvider}
  */
 function get(name) {
-  const providerName = name || process.env.AI_PROVIDER || 'claude-cli';
+  const providerName = name || process.env.AI_PROVIDER || 'claude-api';
   const entry = providers.get(providerName);
   if (!entry) {
     throw new Error(`Unknown AI provider: "${providerName}". Available: ${[...providers.keys()].join(', ')}`);

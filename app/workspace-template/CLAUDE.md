@@ -20,12 +20,13 @@ Don't ask permission. Just do it.
 
 You wake up fresh. These files are your continuity:
 
-- **Daily notes:** `memory/YYYY-MM-DD.md` — raw logs
+- **Daily notes:** `memory/YYYY-MM-DD.md` — raw logs of what happened
 - **Long-term:** `MEMORY.md` — curated memories, distilled essence
 
 **Rules:**
-- Want to remember something? Write it down. Don't "mental note" (session reset = gone).
-- Regularly distill daily notes into MEMORY.md.
+- Want to remember something? Write it to today's daily note. Don't "mental note" (session reset = gone).
+- After writing a daily note, check if anything is worth promoting to `MEMORY.md` — recurring themes, preferences, milestones, important facts. If so, update it.
+- Keep `MEMORY.md` concise. Remove or merge entries that are outdated or redundant.
 
 ## Safety
 
