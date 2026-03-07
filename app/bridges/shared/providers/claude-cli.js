@@ -56,6 +56,7 @@ function buildSandboxProfile(workspacePath) {
     path.join(appDir, 'tools'),
     path.join(appDir, 'workspace-template'),
     path.join(appDir, 'node_modules'),
+    path.join(appDir, 'logs'),
     path.join(appDir, 'workspaces', 'index'),
     path.join(appDir, 'workspaces', 'invites'),
     path.join(appDir, 'workspaces', 'bind-tokens'),
@@ -75,10 +76,11 @@ function buildSandboxProfile(workspacePath) {
   const dataDir = path.join(appDir, 'workspaces', 'data');
   let otherWsDenyRules = '';
   if (fs.existsSync(dataDir)) {
-    // Deny entire data dir, then re-allow THIS workspace
+    // Deny entire data dir, allow metadata for path traversal, re-allow THIS workspace
     otherWsDenyRules = `
 ;; DENY other workspaces
 (deny file-read* (subpath "${esc(dataDir)}"))
+(allow file-read-metadata (subpath "${esc(dataDir)}"))
 (allow file-read* (subpath "${esc(workspacePath)}"))`;
   }
 
@@ -129,6 +131,7 @@ function buildFirejailArgs(workspacePath) {
     path.join(appDir, 'workspace'),
     path.join(appDir, 'workspace-template'),
     path.join(appDir, 'node_modules'),
+    path.join(appDir, 'logs'),
     path.join(appDir, 'workspaces', 'index'),
     path.join(appDir, 'workspaces', 'invites'),
     path.join(appDir, 'workspaces', 'bind-tokens'),
