@@ -1,9 +1,10 @@
 #!/bin/bash
-# Synapsis installer
+# Synapsis installer / updater
 # curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
 set -euo pipefail
 
-REPO="https://github.com/rc1021/synapsis.git"
+REPO_OWNER="rc1021"
+REPO_NAME="synapsis"
 INSTALL_DIR="${SYNAPSIS_DIR:-$HOME/.synapsis}"
 BIN_DIR="$INSTALL_DIR/bin"
 
@@ -160,9 +161,9 @@ require_cmd() {
   fi
 }
 
-require_cmd git git "https://git-scm.com"
 require_cmd node node "https://nodejs.org"
 require_cmd npm npm "https://nodejs.org"
+require_cmd curl curl "https://curl.se"
 
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 if [ "$NODE_MAJOR" -lt 22 ] 2>/dev/null; then
@@ -179,13 +180,78 @@ if [ "$NODE_MAJOR" -lt 22 ] 2>/dev/null; then
   fi
 fi
 
-# ── clone / update ───────────────────────────────────────
-if [ -d "$INSTALL_DIR/.git" ]; then
-  info "Updating existing installation at $INSTALL_DIR"
-  git -C "$INSTALL_DIR" pull --ff-only || warn "Pull failed — continuing with current version"
+# ── download / update ────────────────────────────────────
+IS_UPDATE=false
+if [ -d "$INSTALL_DIR/app" ]; then
+  IS_UPDATE=true
+  # Read current version before update
+  OLD_VERSION=""
+  if [ -f "$INSTALL_DIR/app/package.json" ]; then
+    OLD_VERSION=$(node -p "require('$INSTALL_DIR/app/package.json').version" 2>/dev/null || echo "")
+  fi
+fi
+
+# Fetch latest release tag from GitHub API
+info "Checking latest release..."
+LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest" | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).tag_name" 2>/dev/null || echo "")
+
+if [ -z "$LATEST_TAG" ]; then
+  # Fallback: download main branch tarball
+  warn "No release found — downloading main branch"
+  TARBALL_URL="https://github.com/$REPO_OWNER/$REPO_NAME/archive/refs/heads/main.tar.gz"
+  STRIP_PREFIX="$REPO_NAME-main"
 else
-  info "Cloning synapsis to $INSTALL_DIR"
-  git clone "$REPO" "$INSTALL_DIR"
+  TARBALL_URL="https://github.com/$REPO_OWNER/$REPO_NAME/archive/refs/tags/$LATEST_TAG.tar.gz"
+  STRIP_PREFIX="$REPO_NAME-${LATEST_TAG#v}"
+  info "Latest release: $LATEST_TAG"
+fi
+
+# Skip download if already on latest version
+if [ "$IS_UPDATE" = true ] && [ -n "$LATEST_TAG" ] && [ -n "$OLD_VERSION" ]; then
+  LATEST_VERSION="${LATEST_TAG#v}"
+  if [ "$OLD_VERSION" = "$LATEST_VERSION" ]; then
+    info "Already on latest version ($OLD_VERSION)"
+    exit 0
+  fi
+  info "Updating $OLD_VERSION -> $LATEST_VERSION"
+fi
+
+# Download tarball to temp dir
+TMPDIR_DL=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_DL"' EXIT
+
+info "Downloading..."
+curl -fsSL "$TARBALL_URL" -o "$TMPDIR_DL/synapsis.tar.gz"
+
+info "Extracting..."
+tar xzf "$TMPDIR_DL/synapsis.tar.gz" -C "$TMPDIR_DL"
+
+# Prepare install directory
+mkdir -p "$INSTALL_DIR"
+
+# Preserve user data on update
+if [ "$IS_UPDATE" = true ]; then
+  info "Preserving user data..."
+  # Back up files that should survive updates
+  for preserve in .env workspaces logs; do
+    if [ -e "$INSTALL_DIR/app/$preserve" ]; then
+      mv "$INSTALL_DIR/app/$preserve" "$TMPDIR_DL/_preserve_$preserve"
+    fi
+  done
+fi
+
+# Copy new files (excluding .git-related stuff)
+rm -rf "$INSTALL_DIR/app" "$INSTALL_DIR/install.sh" "$INSTALL_DIR/README.md"
+cp -R "$TMPDIR_DL/$STRIP_PREFIX/app" "$INSTALL_DIR/app"
+cp -f "$TMPDIR_DL/$STRIP_PREFIX/install.sh" "$INSTALL_DIR/install.sh" 2>/dev/null || true
+
+# Restore preserved data
+if [ "$IS_UPDATE" = true ]; then
+  for preserve in .env workspaces logs; do
+    if [ -e "$TMPDIR_DL/_preserve_$preserve" ]; then
+      mv "$TMPDIR_DL/_preserve_$preserve" "$INSTALL_DIR/app/$preserve"
+    fi
+  done
 fi
 
 cd "$INSTALL_DIR/app"
@@ -194,7 +260,7 @@ cd "$INSTALL_DIR/app"
 info "Installing dependencies"
 npm install --no-fund --no-audit
 
-# ── .env setup ───────────────────────────────────────────
+# ── .env setup (first install only) ─────────────────────
 if [ ! -f .env ]; then
   cp .env.example .env
   info "Created app/.env from template"
@@ -272,14 +338,19 @@ if [ ! -f .env ]; then
       ;;
   esac
 else
-  info "app/.env already exists — skipping"
+  info "app/.env already exists — preserved"
 fi
 
 # ── start service ────────────────────────────────────────
 echo ""
 if [ "$(uname)" = "Darwin" ]; then
-  info "Installing background service"
-  bash ctl.sh install
+  if [ "$IS_UPDATE" = true ]; then
+    info "Restarting service"
+    bash ctl.sh restart 2>/dev/null || bash ctl.sh install
+  else
+    info "Installing background service"
+    bash ctl.sh install
+  fi
 else
   info "Starting synapsis"
   npm start &
@@ -325,15 +396,21 @@ if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
 fi
 
 # ── done ─────────────────────────────────────────────────
+NEW_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
 echo ""
-info "Synapsis installed at $INSTALL_DIR"
+if [ "$IS_UPDATE" = true ]; then
+  info "Synapsis updated to v$NEW_VERSION"
+else
+  info "Synapsis v$NEW_VERSION installed at $INSTALL_DIR"
+fi
 echo ""
 echo "  Commands:"
 echo "    synapsis status     # check service"
 echo "    synapsis logs       # tail logs"
 echo "    synapsis restart    # restart"
 echo "    synapsis stop       # stop"
-echo "    synapsis setup      # setup / configure"
+echo "    synapsis update     # check for updates"
+echo "    synapsis setup      # configure"
 echo ""
 echo "  Edit config:  \$EDITOR $INSTALL_DIR/app/.env"
 echo ""

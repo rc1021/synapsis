@@ -1,12 +1,14 @@
 #!/bin/bash
 # synapsis service control
-# Usage: ./ctl.sh [install|uninstall|start|stop|restart|status|logs|setup]
+# Usage: ./ctl.sh [install|uninstall|update|start|stop|restart|status|logs|setup]
 
 set -euo pipefail
 
 LABEL="ai.synapsis"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+INSTALL_DIR="${SYNAPSIS_DIR:-$HOME/.synapsis}"
+BIN_DIR="$INSTALL_DIR/bin"
 TEMPLATE="$SCRIPT_DIR/$LABEL.plist.template"
 GENERATED="$SCRIPT_DIR/$LABEL.plist"
 DEST_PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
@@ -72,11 +74,39 @@ case "${1:-status}" in
     do_install
     ;;
   uninstall)
+    check_running_jobs
+    printf "⚠️  This will remove synapsis completely (service, config, data). Continue? [y/N] "
+    read -r ans
+    [ "$ans" = "y" ] || [ "$ans" = "Y" ] || exit 0
+
     step "stopping service"
     launchctl bootout "$GUI/$LABEL" 2>/dev/null || true
+
     step "removing plist"
     rm -f "$DEST_PLIST" "$GENERATED"
-    ok "uninstalled"
+
+    step "removing install directory ($INSTALL_DIR)"
+    rm -rf "$INSTALL_DIR"
+
+    step "removing synapsis from PATH"
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+      [ -f "$rc" ] || continue
+      if grep -q "# Synapsis" "$rc" 2>/dev/null; then
+        sed -i.bak '/# Synapsis/d;/\.synapsis\/bin/d' "$rc" && rm -f "$rc.bak"
+      fi
+    done
+
+    ok "uninstalled — restart your shell or run: hash -r"
+    ;;
+  update)
+    # Re-run install.sh which handles update logic (preserves .env, workspaces, logs)
+    INSTALL_SCRIPT="$PROJECT_DIR/install.sh"
+    if [ -f "$INSTALL_SCRIPT" ]; then
+      exec bash "$INSTALL_SCRIPT"
+    else
+      echo "Downloading latest installer..."
+      exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh)"
+    fi
     ;;
   start)
     step "starting service"
@@ -147,7 +177,7 @@ case "${1:-status}" in
     esac
     ;;
   *)
-    echo "Usage: $0 {install|uninstall|start|stop|restart|status|logs|setup}"
+    echo "Usage: $0 {install|uninstall|update|start|stop|restart|status|logs|setup}"
     exit 1
     ;;
 esac
