@@ -91,11 +91,44 @@ detect_pm() {
   fi
 }
 
+ensure_pm() {
+  if [ -n "$(detect_pm)" ]; then return 0; fi
+
+  if [ "$(uname)" = "Darwin" ]; then
+    warn "No package manager found"
+    ask "Install Homebrew? [Y/n]:"
+    read -r ans <&3
+    ans="${ans:-Y}"
+    if [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
+      info "Installing Homebrew..."
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
+      # Add brew to PATH for this session
+      if [ -f /opt/homebrew/bin/brew ]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+      elif [ -f /usr/local/bin/brew ]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+      fi
+      command -v brew >/dev/null && return 0
+    fi
+    fail "Homebrew is required on macOS. Install: https://brew.sh"
+  else
+    fail "No package manager found (apt, dnf, yum, pacman). Install one first."
+  fi
+}
+
 install_pkg() {
   local name="$1" pm
+  ensure_pm
   pm=$(detect_pm)
   case "$pm" in
-    brew)   info "Installing $name via Homebrew..."; brew install "$name" ;;
+    brew)
+      info "Installing $name via Homebrew..."
+      brew install "$name"
+      # Rehash PATH after install
+      if [ -f /opt/homebrew/bin/brew ]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+      fi
+      ;;
     apt)    info "Installing $name via apt..."; sudo apt-get update -qq && sudo apt-get install -y "$name" ;;
     dnf)    info "Installing $name via dnf..."; sudo dnf install -y "$name" ;;
     yum)    info "Installing $name via yum..."; sudo yum install -y "$name" ;;
