@@ -435,9 +435,12 @@ class ClaudeCLIProvider extends BaseProvider {
 
     let lineBuffer = '';
     let stderr = '';
+    let rawStdout = '';
 
     child.stdout.on('data', (chunk) => {
-      lineBuffer += chunk.toString();
+      const str = chunk.toString();
+      rawStdout += str;
+      lineBuffer += str;
       const lines = lineBuffer.split('\n');
       lineBuffer = lines.pop() || '';
       for (const line of lines) {
@@ -461,8 +464,9 @@ class ClaudeCLIProvider extends BaseProvider {
       }
 
       if (code !== 0) {
+        const detail = stderr || rawStdout;
         handle.emit('error', {
-          message: `Claude CLI exited with code ${code}: ${stderr.slice(0, 300)}`,
+          message: `Claude CLI exited with code ${code}: ${detail.slice(0, 500)}`,
           code,
         });
       }
