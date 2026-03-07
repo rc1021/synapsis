@@ -126,10 +126,11 @@ install_pkg() {
     brew)
       info "Installing $name via Homebrew..."
       brew install "$name"
-      # Rehash PATH after install
-      if [ -f /opt/homebrew/bin/brew ]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-      fi
+      # Ensure brew binaries are in PATH for this session
+      for p in /opt/homebrew/bin /usr/local/bin; do
+        [ -d "$p" ] && echo "$PATH" | tr ':' '\n' | grep -qx "$p" || export PATH="$p:$PATH"
+      done
+      hash -r 2>/dev/null  # clear command cache
       ;;
     apt)    info "Installing $name via apt..."; sudo apt-get update -qq && sudo apt-get install -y "$name" ;;
     dnf)    info "Installing $name via dnf..."; sudo dnf install -y "$name" ;;
@@ -148,8 +149,12 @@ require_cmd() {
   read -r ans <&3
   ans="${ans:-Y}"
   if [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
-    install_pkg "$pkg" && command -v "$cmd" >/dev/null && return 0
-    fail "Auto-install failed. Install manually: $url"
+    install_pkg "$pkg"
+    if command -v "$cmd" >/dev/null; then
+      info "$cmd installed successfully ($(command -v "$cmd"))"
+      return 0
+    fi
+    fail "Auto-install failed ($cmd not found in PATH=$PATH). Install manually: $url"
   else
     fail "$cmd is required. Install: $url"
   fi
