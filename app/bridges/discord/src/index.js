@@ -306,9 +306,14 @@ function setupEventHandlers() {
       return;
     }
 
-    // Resolve workspace — unregistered users are silently ignored
-    const wsPath = wm.resolveWorkspace(bridge, userId);
-    if (!wsPath) return;
+    // Resolve workspace — auto-register on first DM
+    let wsPath = wm.resolveWorkspace(bridge, userId);
+    if (!wsPath) {
+      if (!isDM) return; // only auto-register via DM, not channel mentions
+      const { wsPath: newPath } = wm.createWorkspace(bridge, userId);
+      wsPath = newPath;
+      log.info(`Auto-registered new user: ${bridge}:${userId}`);
+    }
 
     const sessions = getSessionStore(wsPath);
     const key = SessionStore.keyFor(message);
