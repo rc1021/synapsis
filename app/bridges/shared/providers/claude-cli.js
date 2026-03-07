@@ -200,7 +200,7 @@ function buildCliArgs({
     args.push('--session-id', sessionId);
   }
 
-  if (verbose) {
+  if (verbose || outputFormat === 'stream-json') {
     args.push('--verbose');
   }
 
