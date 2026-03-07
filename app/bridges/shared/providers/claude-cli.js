@@ -170,9 +170,8 @@ function buildCliArgs({
     '--dangerously-skip-permissions',
   ];
 
-  if (sandbox) {
-    args.push('--setting-sources', 'local');
-  }
+  // Disable MCP servers — bot doesn't need them, and they may fail auth in sandbox
+  args.push('--mcp-config', '{}', '--strict-mcp-config');
 
   if (allowedTools && allowedTools.length > 0) {
     args.push('--allowedTools', ...allowedTools);
