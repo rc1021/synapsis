@@ -7,6 +7,10 @@ REPO="https://github.com/rc1021/synapsis.git"
 INSTALL_DIR="${SYNAPSIS_DIR:-$HOME/.synapsis}"
 BIN_DIR="$INSTALL_DIR/bin"
 
+# When piped via curl, stdin is not the terminal.
+# Open /dev/tty for interactive input.
+exec 3</dev/tty 2>/dev/null || exec 3<&0
+
 # ── helpers ──────────────────────────────────────────────
 c_reset='\033[0m'; c_green='\033[32m'; c_yellow='\033[33m'; c_red='\033[31m'; c_bold='\033[1m'; c_dim='\033[2m'
 info()  { printf "${c_bold}${c_green}▸${c_reset} %s\n" "$*"; }
@@ -41,9 +45,9 @@ menu() {
   while true; do
     # Read a single keypress
     local key
-    IFS= read -rsn1 key
+    IFS= read -rsn1 key <&3
     if [ "$key" = $'\x1b' ]; then
-      read -rsn2 key
+      read -rsn2 key <&3
       case "$key" in
         '[A') # Up arrow
           if [ "$selected" -gt 0 ]; then
@@ -106,7 +110,7 @@ require_cmd() {
 
   warn "$cmd not found"
   ask "Install $pkg automatically? [Y/n]:"
-  read -r ans
+  read -r ans <&3
   ans="${ans:-Y}"
   if [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
     install_pkg "$pkg" && command -v "$cmd" >/dev/null && return 0
@@ -124,7 +128,7 @@ NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 if [ "$NODE_MAJOR" -lt 22 ] 2>/dev/null; then
   warn "Node v22+ recommended (you have v$(node -v | tr -d v))"
   ask "Upgrade Node.js? [Y/n]:"
-  read -r ans
+  read -r ans <&3
   ans="${ans:-Y}"
   if [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
     pm=$(detect_pm)
@@ -168,7 +172,7 @@ if [ ! -f .env ]; then
   echo ""
   if [ "$provider" = "claude-api" ]; then
     ask "Anthropic API key (get from https://console.anthropic.com/):"
-    read -r api_key
+    read -r api_key <&3
     if [ -n "$api_key" ]; then
       sed -i.bak "s/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$api_key/" .env && rm -f .env.bak
     else
@@ -192,7 +196,7 @@ if [ ! -f .env ]; then
   case "$bridge" in
     discord)
       ask "Discord bot token (get from https://discord.com/developers/applications):"
-      read -r token
+      read -r token <&3
       if [ -n "$token" ]; then
         sed -i.bak "s/^DISCORD_TOKEN=.*/DISCORD_TOKEN=$token/" .env && rm -f .env.bak
       else
@@ -202,7 +206,7 @@ if [ ! -f .env ]; then
     telegram|whatsapp)
       warn "$bridge bridge is not yet available — Discord will be used as fallback"
       ask "Discord bot token (optional, leave empty to skip):"
-      read -r token
+      read -r token <&3
       if [ -n "$token" ]; then
         sed -i.bak "s/^DISCORD_TOKEN=.*/DISCORD_TOKEN=$token/" .env && rm -f .env.bak
       fi
