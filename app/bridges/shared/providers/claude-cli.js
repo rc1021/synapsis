@@ -33,6 +33,9 @@ function cleanEnv() {
     }
   }
   delete env.CLAUDE_MCP;
+  // Remove API key — claude-cli uses OAuth, not API keys.
+  // If ANTHROPIC_API_KEY is set (even empty), CLI tries it instead of OAuth.
+  delete env.ANTHROPIC_API_KEY;
   return env;
 }
 
@@ -99,11 +102,12 @@ function buildSandboxProfile(workspacePath) {
 ;; Allow all file reads by default (system libs, node, claude binary, etc.)
 (allow file-read*)
 
-;; TODO: re-enable read denies after confirming sandbox works
-;; ${denyRules}
-;; ${otherWsDenyRules}
+;; DENY sensitive project files (source code, .env, config)
+${denyRules}
+${otherWsDenyRules}
 
 ;; WRITE: allow all (Claude CLI needs various system paths)
+;; Write safety is enforced by: disallowedTools, system prompt BASE_RULES, security monitor
 (allow file-write*)
 `;
 }
@@ -227,7 +231,6 @@ function spawnProcess(args, cwd, sandbox) {
     spawnArgs = args;
   }
 
-  console.log('[DEBUG] spawn:', spawnCmd, spawnArgs.filter(a => !a.startsWith('(version')).join(' '));
   return spawn(spawnCmd, spawnArgs, {
     cwd,
     env,
