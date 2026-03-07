@@ -41,7 +41,7 @@ Synapsis는 AI에게 지속적인 정체성, 기억, 그리고 스스로 연락�
 
 ## 시작하기
 
-전제 조건: **Node.js v22+** ([nodejs.org](https://nodejs.org)), **git**
+전제 조건: **Node.js v22+** ([nodejs.org](https://nodejs.org))
 
 시작 전 준비:
 1. **Anthropic API 키** — [console.anthropic.com](https://console.anthropic.com/)에서 받기
@@ -53,7 +53,7 @@ Synapsis는 AI에게 지속적인 정체성, 기억, 그리고 스스로 연락�
 curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
 ```
 
-인스톨러가 리포지토리 클론, 의존성 설치, API 키와 Discord 토큰 입력 안내, 서비스 자동 시작을 수행합니다.
+인스톨러가 최신 버전 다운로드, 의존성 설치, API 키와 Discord 토큰 입력 안내, 서비스 자동 시작을 수행합니다.
 
 인스톨러가 `synapsis` 명령어를 PATH에 추가합니다. 셸을 재시작하거나 `source ~/.zshrc`를 실행하세요.
 
@@ -66,8 +66,29 @@ synapsis status    # 실행 상태 확인
 synapsis logs      # 실시간 로그 보기
 synapsis restart   # 서비스 재시작
 synapsis stop      # 서비스 중지
-synapsis uninstall # 중지 + plist 제거
+synapsis update    # 최신 버전으로 업데이트
+synapsis setup     # API 키 / 토큰 재설정
+synapsis uninstall # synapsis 완전 제거
 ```
+
+### Bot 명령어
+
+Discord에서 다음 슬래시 명령어를 사용할 수 있습니다 (DM 또는 채널):
+
+| 명령어 | 설명 |
+|--------|------|
+| `/help` | 사용 가능한 명령어 표시 |
+| `/new` 또는 `/reset` | 새 대화 시작 (현재 세션 초기화) |
+| `/connection <code>` | 초대 코드로 등록 |
+| `/share-code` | 24시간 일회용 초대 코드 생성 |
+| `/bind-token` | 5분간 유효한 크로스 플랫폼 바인딩 토큰 생성 |
+| `/bind <token>` | 이 계정을 기존 워크스페이스에 연결 |
+
+**첫 설정 흐름:**
+1. Bot 소유자는 자동으로 워크스페이스를 받음 (`.env`의 `SEED_USER`로 설정)
+2. 소유자가 `/share-code`로 초대 코드 생성
+3. 새 사용자가 `/connection <code>`로 등록하고 자신의 워크스페이스 받기
+4. 크로스 플랫폼 연결: 등록된 계정에서 `/bind-token`, 다른 플랫폼에서 `/bind <token>`
 
 ## 설정
 

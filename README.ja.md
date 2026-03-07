@@ -41,7 +41,7 @@ Synapsis は AI に永続的なアイデンティティ、記憶、そして自�
 
 ## 始め方
 
-前提条件：**Node.js v22+**（[nodejs.org](https://nodejs.org)）、**git**
+前提条件：**Node.js v22+**（[nodejs.org](https://nodejs.org)）
 
 始める前に準備するもの：
 1. **Anthropic API キー** — [console.anthropic.com](https://console.anthropic.com/) から取得
@@ -53,7 +53,7 @@ Synapsis は AI に永続的なアイデンティティ、記憶、そして自�
 curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
 ```
 
-インストーラーがリポジトリのクローン、依存パッケージのインストール、API キーと Discord トークンの入力案内、サービスの自動起動を行います。
+インストーラーが最新バージョンのダウンロード、依存パッケージのインストール、API キーと Discord トークンの入力案内、サービスの自動起動を行います。
 
 インストーラーが `synapsis` コマンドを PATH に追加します。シェルを再起動するか `source ~/.zshrc` を実行してください。
 
@@ -66,8 +66,29 @@ synapsis status    # 実行状態を確認
 synapsis logs      # リアルタイムログを表示
 synapsis restart   # サービスを再起動
 synapsis stop      # サービスを停止
-synapsis uninstall # 停止 + plist を削除
+synapsis update    # 最新バージョンに更新
+synapsis setup     # API キー / トークンを再設定
+synapsis uninstall # synapsis を完全に削除
 ```
+
+### Bot コマンド
+
+Discord でこれらのスラッシュコマンドを使用できます（DM またはチャンネル）：
+
+| コマンド | 説明 |
+|----------|------|
+| `/help` | 利用可能なコマンドを表示 |
+| `/new` または `/reset` | 新しい会話を開始（現在のセッションをクリア） |
+| `/connection <code>` | 招待コードで登録 |
+| `/share-code` | 24時間有効の使い捨て招待コードを生成 |
+| `/bind-token` | 5分間有効のクロスプラットフォーム連携トークンを生成 |
+| `/bind <token>` | このアカウントを既存のワークスペースに連携 |
+
+**初回セットアップの流れ：**
+1. Bot オーナーは自動的にワークスペースを取得（`.env` の `SEED_USER` で設定）
+2. オーナーが `/share-code` で招待コードを生成
+3. 新ユーザーが `/connection <code>` で登録し、自分のワークスペースを取得
+4. クロスプラットフォーム連携：登録済みアカウントで `/bind-token`、別のプラットフォームで `/bind <token>`
 
 ## 設定
 

@@ -144,6 +144,19 @@ function handleCommand(bridge, userId, parsed, context) {
       return { reply: 'New conversation started.' };
     }
 
+    case 'help': {
+      const lines = [
+        '**Available commands:**',
+        '`/help` — Show this list',
+        '`/new` or `/reset` — Start a new conversation',
+        '`/connection <code>` — Register with an invite code',
+        '`/share-code` — Generate a 24hr one-time invite code',
+        '`/bind-token` — Generate a 5-min token for cross-platform binding',
+        '`/bind <token>` — Bind this account to an existing workspace',
+      ];
+      return { reply: lines.join('\n'), ephemeral: true };
+    }
+
     default:
       return null; // Unknown command — not handled
   }

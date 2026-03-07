@@ -41,7 +41,7 @@ Synapsis 讓你的 AI 擁有持久的身份、記憶，以及主動聯繫你的�
 
 ## 開始使用
 
-前置需求：**Node.js v22+**（[nodejs.org](https://nodejs.org)）、**git**
+前置需求：**Node.js v22+**（[nodejs.org](https://nodejs.org)）
 
 開始之前，請先準備：
 1. **Anthropic API 金鑰** — 從 [console.anthropic.com](https://console.anthropic.com/) 取得
@@ -53,7 +53,7 @@ Synapsis 讓你的 AI 擁有持久的身份、記憶，以及主動聯繫你的�
 curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
 ```
 
-安裝程式會 clone 專案、安裝依賴、詢問 API 金鑰和 Discord token，並自動啟動服務。
+安裝程式會下載最新版本、安裝依賴、詢問 API 金鑰和 Discord token，並自動啟動服務。
 
 安裝程式會將 `synapsis` 指令加入 PATH。重啟 shell 或執行 `source ~/.zshrc` 即可使用。
 
@@ -66,8 +66,29 @@ synapsis status    # 檢查執行狀態
 synapsis logs      # 即時查看 log
 synapsis restart   # 重啟服務
 synapsis stop      # 停止服務
-synapsis uninstall # 停止 + 移除 plist
+synapsis update    # 更新至最新版本
+synapsis setup     # 重新設定 API 金鑰 / token
+synapsis uninstall # 完整移除 synapsis
 ```
+
+### Bot 指令
+
+在 Discord 中使用這些斜線指令（私訊或頻道皆可）：
+
+| 指令 | 說明 |
+|------|------|
+| `/help` | 顯示可用指令列表 |
+| `/new` 或 `/reset` | 開始新對話（清除目前 session） |
+| `/connection <code>` | 用邀請碼註冊 |
+| `/share-code` | 產生 24 小時一次性邀請碼 |
+| `/bind-token` | 產生 5 分鐘跨平台綁定 token |
+| `/bind <token>` | 將此帳號綁定到已有的工作空間 |
+
+**首次設定流程：**
+1. Bot 擁有者自動取得工作空間（透過 `.env` 的 `SEED_USER` 設定）
+2. 擁有者執行 `/share-code` 產生邀請碼
+3. 新使用者執行 `/connection <code>` 註冊並取得自己的工作空間
+4. 跨平台綁定：在已註冊帳號執行 `/bind-token`，再到另一個平台執行 `/bind <token>`
 
 ## 設定
 

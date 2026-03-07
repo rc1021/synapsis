@@ -41,7 +41,7 @@ When you message the bot, the bridge routes it through a shared runner to the AI
 
 ## Getting started
 
-Prerequisites: **Node.js v22+** ([nodejs.org](https://nodejs.org)), **git**
+Prerequisites: **Node.js v22+** ([nodejs.org](https://nodejs.org))
 
 Before you begin, prepare:
 1. An **Anthropic API key** — get from [console.anthropic.com](https://console.anthropic.com/)
@@ -53,7 +53,7 @@ Then run:
 curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
 ```
 
-The installer will clone the repo, install dependencies, ask for your API key and Discord token, and start the service automatically.
+The installer will download the latest release, install dependencies, ask for your API key and Discord token, and start the service automatically.
 
 The installer adds the `synapsis` command to your PATH. Restart your shell or run `source ~/.zshrc` to use it.
 
@@ -66,8 +66,29 @@ synapsis status    # check if running
 synapsis logs      # tail live logs
 synapsis restart   # restart service
 synapsis stop      # stop service
-synapsis uninstall # stop + remove plist
+synapsis update    # update to latest version
+synapsis setup     # reconfigure API keys / tokens
+synapsis uninstall # completely remove synapsis
 ```
+
+### Bot commands
+
+Use these slash commands in Discord (DM or channel):
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/new` or `/reset` | Start a new conversation (clear current session) |
+| `/connection <code>` | Register with an invite code |
+| `/share-code` | Generate a 24hr one-time invite code to share |
+| `/bind-token` | Generate a 5-min token for cross-platform account binding |
+| `/bind <token>` | Bind this account to an existing workspace |
+
+**First-time setup flow:**
+1. The bot owner gets a workspace automatically (configured via `SEED_USER` in `.env`)
+2. Owner runs `/share-code` to generate an invite code
+3. New user runs `/connection <code>` to register and get their own workspace
+4. To link accounts across platforms, use `/bind-token` on the registered account, then `/bind <token>` on the other
 
 ## Configuration
 
