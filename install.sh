@@ -76,12 +76,63 @@ menu() {
 }
 
 # ── preflight ────────────────────────────────────────────
-command -v git  >/dev/null || fail "git is required.  Install: https://git-scm.com"
-command -v node >/dev/null || fail "node is required (v22+). Install: https://nodejs.org"
-command -v npm  >/dev/null || fail "npm is required.  Comes with node."
+detect_pm() {
+  if command -v brew >/dev/null; then echo "brew"
+  elif command -v apt-get >/dev/null; then echo "apt"
+  elif command -v dnf >/dev/null; then echo "dnf"
+  elif command -v yum >/dev/null; then echo "yum"
+  elif command -v pacman >/dev/null; then echo "pacman"
+  else echo ""
+  fi
+}
+
+install_pkg() {
+  local name="$1" pm
+  pm=$(detect_pm)
+  case "$pm" in
+    brew)   info "Installing $name via Homebrew..."; brew install "$name" ;;
+    apt)    info "Installing $name via apt..."; sudo apt-get update -qq && sudo apt-get install -y "$name" ;;
+    dnf)    info "Installing $name via dnf..."; sudo dnf install -y "$name" ;;
+    yum)    info "Installing $name via yum..."; sudo yum install -y "$name" ;;
+    pacman) info "Installing $name via pacman..."; sudo pacman -S --noconfirm "$name" ;;
+    *)      return 1 ;;
+  esac
+}
+
+require_cmd() {
+  local cmd="$1" pkg="${2:-$1}" url="$3"
+  if command -v "$cmd" >/dev/null; then return 0; fi
+
+  warn "$cmd not found"
+  ask "Install $pkg automatically? [Y/n]:"
+  read -r ans
+  ans="${ans:-Y}"
+  if [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
+    install_pkg "$pkg" && command -v "$cmd" >/dev/null && return 0
+    fail "Auto-install failed. Install manually: $url"
+  else
+    fail "$cmd is required. Install: $url"
+  fi
+}
+
+require_cmd git git "https://git-scm.com"
+require_cmd node node "https://nodejs.org"
+require_cmd npm npm "https://nodejs.org"
 
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
-[ "$NODE_MAJOR" -ge 22 ] 2>/dev/null || warn "Node v22+ recommended (you have v$(node -v | tr -d v))"
+if [ "$NODE_MAJOR" -lt 22 ] 2>/dev/null; then
+  warn "Node v22+ recommended (you have v$(node -v | tr -d v))"
+  ask "Upgrade Node.js? [Y/n]:"
+  read -r ans
+  ans="${ans:-Y}"
+  if [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
+    pm=$(detect_pm)
+    case "$pm" in
+      brew) brew install node@22 ;;
+      *)    warn "Please upgrade manually: https://nodejs.org" ;;
+    esac
+  fi
+fi
 
 # ── clone / update ───────────────────────────────────────
 if [ -d "$INSTALL_DIR/.git" ]; then
