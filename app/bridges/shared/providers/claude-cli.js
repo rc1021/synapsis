@@ -61,6 +61,9 @@ function buildSandboxProfile(workspacePath) {
 ;; DENY reads to project directory (blocks CLAUDE.md, .env, source code, other workspaces)
 (deny file-read* (subpath "${esc(PROJECT_DIR)}"))
 
+;; Allow metadata (lstat/stat) on project dir — needed for path resolution
+(allow file-read-metadata (subpath "${esc(PROJECT_DIR)}"))
+
 ;; Re-allow reads for THIS workspace only
 (allow file-read* (subpath "${esc(workspacePath)}"))
 
