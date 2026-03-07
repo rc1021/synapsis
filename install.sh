@@ -4,7 +4,8 @@
 set -euo pipefail
 
 REPO="https://github.com/rc1021/synapsis.git"
-INSTALL_DIR="${SYNAPSIS_DIR:-$HOME/synapsis}"
+INSTALL_DIR="${SYNAPSIS_DIR:-$HOME/.synapsis}"
+BIN_DIR="$INSTALL_DIR/bin"
 
 # ── helpers ──────────────────────────────────────────────
 c_reset='\033[0m'; c_green='\033[32m'; c_yellow='\033[33m'; c_red='\033[31m'; c_bold='\033[1m'; c_dim='\033[2m'
@@ -221,15 +222,49 @@ else
   npm start &
 fi
 
+# ── install CLI bin ───────────────────────────────────────
+mkdir -p "$BIN_DIR"
+cat > "$BIN_DIR/synapsis" <<SCRIPT
+#!/bin/bash
+exec "$INSTALL_DIR/app/ctl.sh" "\$@"
+SCRIPT
+chmod +x "$BIN_DIR/synapsis"
+
+# ── add to PATH ──────────────────────────────────────────
+add_to_path() {
+  local rc="$1"
+  if [ -f "$rc" ] && grep -q "$BIN_DIR" "$rc" 2>/dev/null; then
+    return 0  # already added
+  fi
+  [ -f "$rc" ] || return 1
+  echo "" >> "$rc"
+  echo "# Synapsis" >> "$rc"
+  echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$rc"
+  info "Added $BIN_DIR to PATH in $(basename "$rc")"
+}
+
+if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
+  added=false
+  for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+    if add_to_path "$rc"; then added=true; fi
+  done
+  if [ "$added" = true ]; then
+    export PATH="$BIN_DIR:$PATH"
+  else
+    warn "Add this to your shell profile manually:"
+    echo "  export PATH=\"$BIN_DIR:\$PATH\""
+  fi
+fi
+
 # ── done ─────────────────────────────────────────────────
 echo ""
 info "Synapsis installed at $INSTALL_DIR"
 echo ""
-echo "  Quick commands:"
-echo "    cd $INSTALL_DIR/app"
-echo "    ./ctl.sh status        # check service"
-echo "    ./ctl.sh logs          # tail logs"
-echo "    ./ctl.sh restart       # restart"
+echo "  Commands:"
+echo "    synapsis status     # check service"
+echo "    synapsis logs       # tail logs"
+echo "    synapsis restart    # restart"
+echo "    synapsis stop       # stop"
 echo ""
 echo "  Edit config:  \$EDITOR $INSTALL_DIR/app/.env"
 echo ""

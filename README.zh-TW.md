@@ -55,23 +55,18 @@ curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/ins
 
 安裝程式會 clone 專案、安裝依賴、詢問 API 金鑰和 Discord token，並自動啟動服務。
 
-自訂安裝路徑：
-
-```bash
-SYNAPSIS_DIR=/opt/synapsis curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
-```
+安裝程式會將 `synapsis` 指令加入 PATH。重啟 shell 或執行 `source ~/.zshrc` 即可使用。
 
 服務啟動後，傳送私訊給你的 bot — 如果有回覆，就大功告成了！
 
 ### 服務管理
 
 ```bash
-cd ~/synapsis/app
-./ctl.sh status    # 檢查執行狀態
-./ctl.sh logs      # 即時查看 log
-./ctl.sh restart   # 重啟服務
-./ctl.sh stop      # 停止服務
-./ctl.sh uninstall # 停止 + 移除 plist
+synapsis status    # 檢查執行狀態
+synapsis logs      # 即時查看 log
+synapsis restart   # 重啟服務
+synapsis stop      # 停止服務
+synapsis uninstall # 停止 + 移除 plist
 ```
 
 ## 設定

@@ -55,23 +55,18 @@ curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/ins
 
 인스톨러가 리포지토리 클론, 의존성 설치, API 키와 Discord 토큰 입력 안내, 서비스 자동 시작을 수행합니다.
 
-커스텀 설치 경로:
-
-```bash
-SYNAPSIS_DIR=/opt/synapsis curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
-```
+인스톨러가 `synapsis` 명령어를 PATH에 추가합니다. 셸을 재시작하거나 `source ~/.zshrc`를 실행하세요.
 
 실행 후 봇에 DM을 보내세요 — 답장이 오면 완료입니다!
 
 ### 서비스 관리
 
 ```bash
-cd ~/synapsis/app
-./ctl.sh status    # 실행 상태 확인
-./ctl.sh logs      # 실시간 로그 보기
-./ctl.sh restart   # 서비스 재시작
-./ctl.sh stop      # 서비스 중지
-./ctl.sh uninstall # 중지 + plist 제거
+synapsis status    # 실행 상태 확인
+synapsis logs      # 실시간 로그 보기
+synapsis restart   # 서비스 재시작
+synapsis stop      # 서비스 중지
+synapsis uninstall # 중지 + plist 제거
 ```
 
 ## 설정

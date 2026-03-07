@@ -55,23 +55,18 @@ curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/ins
 
 インストーラーがリポジトリのクローン、依存パッケージのインストール、API キーと Discord トークンの入力案内、サービスの自動起動を行います。
 
-カスタムインストールパス：
-
-```bash
-SYNAPSIS_DIR=/opt/synapsis curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
-```
+インストーラーが `synapsis` コマンドを PATH に追加します。シェルを再起動するか `source ~/.zshrc` を実行してください。
 
 起動後、ボットに DM を送ってください — 返信があれば完了です！
 
 ### サービス管理
 
 ```bash
-cd ~/synapsis/app
-./ctl.sh status    # 実行状態を確認
-./ctl.sh logs      # リアルタイムログを表示
-./ctl.sh restart   # サービスを再起動
-./ctl.sh stop      # サービスを停止
-./ctl.sh uninstall # 停止 + plist を削除
+synapsis status    # 実行状態を確認
+synapsis logs      # リアルタイムログを表示
+synapsis restart   # サービスを再起動
+synapsis stop      # サービスを停止
+synapsis uninstall # 停止 + plist を削除
 ```
 
 ## 設定

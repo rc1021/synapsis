@@ -55,23 +55,18 @@ curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/ins
 
 The installer will clone the repo, install dependencies, ask for your API key and Discord token, and start the service automatically.
 
-Custom install path:
-
-```bash
-SYNAPSIS_DIR=/opt/synapsis curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh | bash
-```
+The installer adds the `synapsis` command to your PATH. Restart your shell or run `source ~/.zshrc` to use it.
 
 Once running, send a DM to your bot — if it replies, you're all set!
 
 ### Service management
 
 ```bash
-cd ~/synapsis/app
-./ctl.sh status    # check if running
-./ctl.sh logs      # tail live logs
-./ctl.sh restart   # restart service
-./ctl.sh stop      # stop service
-./ctl.sh uninstall # stop + remove plist
+synapsis status    # check if running
+synapsis logs      # tail live logs
+synapsis restart   # restart service
+synapsis stop      # stop service
+synapsis uninstall # stop + remove plist
 ```
 
 ## Configuration
