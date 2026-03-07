@@ -171,7 +171,11 @@ function buildCliArgs({
   ];
 
   // Disable MCP servers — bot doesn't need them, and they may fail auth in sandbox
-  args.push('--mcp-config', '{"mcpServers":{}}', '--strict-mcp-config');
+  const emptyMcpConfig = path.join(os.tmpdir(), 'synapsis-empty-mcp.json');
+  if (!fs.existsSync(emptyMcpConfig)) {
+    fs.writeFileSync(emptyMcpConfig, JSON.stringify({ mcpServers: {} }));
+  }
+  args.push('--strict-mcp-config', '--mcp-config', emptyMcpConfig);
 
   if (allowedTools && allowedTools.length > 0) {
     args.push('--allowedTools', ...allowedTools);
