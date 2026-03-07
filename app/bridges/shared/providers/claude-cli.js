@@ -467,7 +467,7 @@ class ClaudeCLIProvider extends BaseProvider {
       if (code !== 0) {
         const detail = stderr || rawStdout;
         handle.emit('error', {
-          message: `Claude CLI exited with code ${code}: ${detail.slice(0, 500)}`,
+          message: `Claude CLI exited with code ${code}: ${detail.slice(-1000)}`,
           code,
         });
       }
