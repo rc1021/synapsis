@@ -219,7 +219,26 @@ if [ ! -f .env ]; then
       warn "Skipped — set ANTHROPIC_API_KEY in app/.env later"
     fi
   else
-    info "Make sure the Claude CLI is installed and authenticated on this machine"
+    if ! command -v claude >/dev/null; then
+      info "Installing Claude CLI..."
+      npm install -g @anthropic-ai/claude-code
+      hash -r 2>/dev/null
+      if command -v claude >/dev/null; then
+        info "Claude CLI installed ($(command -v claude))"
+      else
+        warn "Claude CLI install failed — run 'npm install -g @anthropic-ai/claude-code' manually"
+      fi
+    else
+      info "Claude CLI found ($(command -v claude))"
+    fi
+    if command -v claude >/dev/null; then
+      ask "Authenticate Claude CLI now? [Y/n]:"
+      read -r ans <&3
+      ans="${ans:-Y}"
+      if [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
+        claude </dev/tty || warn "Authentication skipped — run 'claude' manually to log in"
+      fi
+    fi
   fi
 
   echo ""
