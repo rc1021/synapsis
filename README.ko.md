@@ -67,6 +67,7 @@ synapsis logs      # 실시간 로그 보기
 synapsis restart   # 서비스 재시작
 synapsis stop      # 서비스 중지
 synapsis update    # 최신 버전으로 업데이트
+synapsis version   # 현재 버전 표시
 synapsis setup     # API 키 / 토큰 재설정
 synapsis uninstall # synapsis 완전 제거
 ```

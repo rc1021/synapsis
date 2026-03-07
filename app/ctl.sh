@@ -1,6 +1,6 @@
 #!/bin/bash
 # synapsis service control
-# Usage: ./ctl.sh [install|uninstall|update|start|stop|restart|status|logs|setup]
+# Usage: ./ctl.sh [install|uninstall|update|start|stop|restart|status|version|logs|setup]
 
 set -euo pipefail
 
@@ -176,8 +176,11 @@ case "${1:-status}" in
       q|"") ;;
     esac
     ;;
+  version|--version|-v)
+    node -p "require('$SCRIPT_DIR/package.json').version" 2>/dev/null || echo "unknown"
+    ;;
   *)
-    echo "Usage: $0 {install|uninstall|update|start|stop|restart|status|logs|setup}"
+    echo "Usage: $0 {install|uninstall|update|start|stop|restart|status|version|logs|setup}"
     exit 1
     ;;
 esac

@@ -67,6 +67,7 @@ synapsis logs      # 即時查看 log
 synapsis restart   # 重啟服務
 synapsis stop      # 停止服務
 synapsis update    # 更新至最新版本
+synapsis version   # 顯示目前版本
 synapsis setup     # 重新設定 API 金鑰 / token
 synapsis uninstall # 完整移除 synapsis
 ```

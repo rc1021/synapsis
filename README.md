@@ -67,6 +67,7 @@ synapsis logs      # tail live logs
 synapsis restart   # restart service
 synapsis stop      # stop service
 synapsis update    # update to latest version
+synapsis version   # show current version
 synapsis setup     # reconfigure API keys / tokens
 synapsis uninstall # completely remove synapsis
 ```

@@ -67,6 +67,7 @@ synapsis logs      # リアルタイムログを表示
 synapsis restart   # サービスを再起動
 synapsis stop      # サービスを停止
 synapsis update    # 最新バージョンに更新
+synapsis version   # 現在のバージョンを表示
 synapsis setup     # API キー / トークンを再設定
 synapsis uninstall # synapsis を完全に削除
 ```
