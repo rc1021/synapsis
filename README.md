@@ -72,24 +72,56 @@ synapsis setup     # reconfigure API keys / tokens
 synapsis uninstall # completely remove synapsis
 ```
 
-### Bot commands
+### Usage guide
 
-Use these slash commands in Discord (DM or channel):
+#### Discord
+
+**For the bot owner (first-time setup):**
+
+1. Create a Discord server (or use an existing one)
+2. Invite your bot to the server via the [Discord Developer Portal](https://discord.com/developers/applications) OAuth2 URL
+3. The owner's workspace is created automatically on first message (configured via `SEED_USER` in `.env`)
+4. Start chatting with the bot via DM — it will introduce itself and get to know you
+
+**Inviting friends:**
+
+1. Run `/share-code` in Discord — you'll get two things:
+   - A **Synapsis invite code** (24hr, one-time use)
+   - A **server invite link** (24hr, one-time use)
+2. Send both to your friend
+3. Your friend clicks the server invite link to join the server
+4. They'll receive an automatic welcome DM from the bot
+5. They run `/connection <invite-code>` to register and get their own workspace
+6. Done! They can now chat with the bot via DM
+
+**Cross-platform account binding:**
+
+If a user wants to use the same workspace from another platform (e.g. future Telegram bridge):
+
+1. On the registered account, run `/bind-token` — get a 5-min one-time token
+2. On the other platform, run `/bind <token>`
+3. Both accounts now share the same workspace, memory, and identity
+
+**Commands:**
 
 | Command | Description |
 |---------|-------------|
 | `/help` | Show available commands |
 | `/new` or `/reset` | Start a new conversation (clear current session) |
 | `/connection <code>` | Register with an invite code |
-| `/share-code` | Generate a 24hr one-time invite code to share |
-| `/bind-token` | Generate a 5-min token for cross-platform account binding |
+| `/share-code` | Generate invite code + server invite link |
+| `/bind-token` | Generate a cross-platform binding token |
 | `/bind <token>` | Bind this account to an existing workspace |
 
-**First-time setup flow:**
-1. The bot owner gets a workspace automatically (configured via `SEED_USER` in `.env`)
-2. Owner runs `/share-code` to generate an invite code
-3. New user runs `/connection <code>` to register and get their own workspace
-4. To link accounts across platforms, use `/bind-token` on the registered account, then `/bind <token>` on the other
+> All command descriptions are localized — they appear in your Discord language (English, 繁體中文, 简体中文, 日本語, 한국어).
+
+#### Telegram (planned)
+
+Not yet available. Will support `/command` style interactions similar to Discord.
+
+#### WhatsApp (planned)
+
+Not yet available. WhatsApp has no slash command system, so interactions will use natural language or keyword triggers (e.g. send `HELP` to see available actions).
 
 ## Configuration
 

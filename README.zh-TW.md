@@ -72,24 +72,56 @@ synapsis setup     # 重新設定 API 金鑰 / token
 synapsis uninstall # 完整移除 synapsis
 ```
 
-### Bot 指令
+### 使用指南
 
-在 Discord 中使用這些斜線指令（私訊或頻道皆可）：
+#### Discord
+
+**Bot 擁有者（首次設定）：**
+
+1. 建立一個 Discord server（或使用現有的）
+2. 透過 [Discord 開發者入口](https://discord.com/developers/applications) 的 OAuth2 連結邀請 bot 加入 server
+3. 擁有者的工作空間會在第一次傳訊時自動建立（透過 `.env` 的 `SEED_USER` 設定）
+4. 透過 DM 開始跟 bot 聊天 — 它會自我介紹並認識你
+
+**邀請朋友：**
+
+1. 在 Discord 執行 `/share-code` — 會同時取得：
+   - **Synapsis 邀請碼**（24 小時，一次性使用）
+   - **Server 邀請連結**（24 小時，一次性使用）
+2. 把兩樣東西傳給朋友
+3. 朋友點擊 server 邀請連結加入 server
+4. Bot 會自動傳送歡迎 DM 給他們
+5. 他們執行 `/connection <邀請碼>` 註冊並取得自己的工作空間
+6. 完成！可以透過 DM 跟 bot 聊天了
+
+**跨平台帳號綁定：**
+
+如果使用者想在另一個平台（例如未來的 Telegram bridge）使用同一個工作空間：
+
+1. 在已註冊帳號執行 `/bind-token` — 取得 5 分鐘一次性 token
+2. 在另一個平台執行 `/bind <token>`
+3. 兩個帳號現在共享同一個工作空間、記憶和身份
+
+**指令列表：**
 
 | 指令 | 說明 |
 |------|------|
-| `/help` | 顯示可用指令列表 |
+| `/help` | 顯示可用指令 |
 | `/new` 或 `/reset` | 開始新對話（清除目前 session） |
 | `/connection <code>` | 用邀請碼註冊 |
-| `/share-code` | 產生 24 小時一次性邀請碼 |
-| `/bind-token` | 產生 5 分鐘跨平台綁定 token |
+| `/share-code` | 產生邀請碼 + server 邀請連結 |
+| `/bind-token` | 產生跨平台綁定 token |
 | `/bind <token>` | 將此帳號綁定到已有的工作空間 |
 
-**首次設定流程：**
-1. Bot 擁有者自動取得工作空間（透過 `.env` 的 `SEED_USER` 設定）
-2. 擁有者執行 `/share-code` 產生邀請碼
-3. 新使用者執行 `/connection <code>` 註冊並取得自己的工作空間
-4. 跨平台綁定：在已註冊帳號執行 `/bind-token`，再到另一個平台執行 `/bind <token>`
+> 所有指令說明皆已本地化 — 會依你的 Discord 語系自動顯示（English、繁體中文、简体中文、日本語、한국어）。
+
+#### Telegram（規劃中）
+
+尚未開放。將支援類似 Discord 的 `/command` 斜線指令。
+
+#### WhatsApp（規劃中）
+
+尚未開放。WhatsApp 沒有斜線指令系統，將使用自然語言或關鍵字觸發（例如傳送 `HELP` 查看可用功能）。
 
 ## 設定
 
