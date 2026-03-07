@@ -41,7 +41,46 @@ function cleanEnv() {
  */
 function buildSandboxProfile(workspacePath) {
   const home = os.homedir();
+  const appDir = path.join(PROJECT_DIR, 'app');
   const esc = (p) => p.replace(/"/g, '\\"');
+
+  // Targeted deny list — same as firejail approach
+  const denyPaths = [
+    path.join(PROJECT_DIR, 'CLAUDE.md'),
+    path.join(PROJECT_DIR, '.env'),
+    path.join(appDir, '.env'),
+    path.join(appDir, 'src'),
+    path.join(appDir, 'bridges'),
+    path.join(appDir, 'scheduler'),
+    path.join(appDir, 'scripts'),
+    path.join(appDir, 'tools'),
+    path.join(appDir, 'workspace-template'),
+    path.join(appDir, 'node_modules'),
+    path.join(appDir, 'workspaces', 'index'),
+    path.join(appDir, 'workspaces', 'invites'),
+    path.join(appDir, 'workspaces', 'bind-tokens'),
+  ];
+
+  // Only deny paths that exist
+  const denyRules = denyPaths
+    .filter(p => fs.existsSync(p))
+    .map(p => {
+      const stat = fs.statSync(p);
+      const filter = stat.isDirectory() ? 'subpath' : 'literal';
+      return `(deny file-read* (${filter} "${esc(p)}"))`;
+    })
+    .join('\n');
+
+  // Deny reads to OTHER workspaces (sibling dirs in workspaces/data/)
+  const dataDir = path.join(appDir, 'workspaces', 'data');
+  let otherWsDenyRules = '';
+  if (fs.existsSync(dataDir)) {
+    // Deny entire data dir, then re-allow THIS workspace
+    otherWsDenyRules = `
+;; DENY other workspaces
+(deny file-read* (subpath "${esc(dataDir)}"))
+(allow file-read* (subpath "${esc(workspacePath)}"))`;
+  }
 
   return `(version 1)
 (deny default)
@@ -58,14 +97,9 @@ function buildSandboxProfile(workspacePath) {
 ;; Allow all file reads by default (system libs, node, claude binary, etc.)
 (allow file-read*)
 
-;; DENY reads to project directory (blocks CLAUDE.md, .env, source code, other workspaces)
-(deny file-read* (subpath "${esc(PROJECT_DIR)}"))
-
-;; Allow metadata (lstat/stat) on project dir — needed for path resolution
-(allow file-read-metadata (subpath "${esc(PROJECT_DIR)}"))
-
-;; Re-allow reads for THIS workspace only
-(allow file-read* (subpath "${esc(workspacePath)}"))
+;; DENY sensitive project files (source code, .env, config)
+${denyRules}
+${otherWsDenyRules}
 
 ;; WRITE: only this workspace + system temp + Claude config
 (allow file-write* (subpath "${esc(workspacePath)}"))
