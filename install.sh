@@ -101,7 +101,7 @@ ensure_pm() {
     ans="${ans:-Y}"
     if [ "$ans" = "Y" ] || [ "$ans" = "y" ]; then
       info "Installing Homebrew..."
-      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/tty
       # Add brew to PATH for this session
       if [ -f /opt/homebrew/bin/brew ]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
