@@ -358,8 +358,76 @@ function setupEventHandlers() {
 
     startTyping();
 
-    // --- Progress (silent — only log, no Discord messages) ---
-    let stepCount = 0;
+    // --- Progress message state ---
+    // Set SHOW_PROGRESS=1 in .env to show tool progress in Discord
+    const showProgress = process.env.SHOW_PROGRESS === '1';
+    const PROGRESS_DELAY = 10000;
+    let progressMsg = null;
+    const progressSteps = [];
+    let lastEditTime = 0;
+    const EDIT_THROTTLE = 3000;
+    let pendingEdit = null;
+    let progressDelayTimer = null;
+    let progressQueued = false;
+    const requestStart = Date.now();
+
+    const TOOL_CATEGORIES = {
+      Read: { emoji: '📖', cat: 'read' },
+      Glob: { emoji: '📖', cat: 'read' },
+      Grep: { emoji: '🔍', cat: 'search' },
+      WebSearch: { emoji: '🔍', cat: 'search' },
+      WebFetch: { emoji: '🔍', cat: 'search' },
+      Edit: { emoji: '✏️', cat: 'write' },
+      Write: { emoji: '✏️', cat: 'write' },
+      Bash: { emoji: '⚡', cat: 'exec' },
+      Agent: { emoji: '🤖', cat: 'agent' },
+    };
+    const DEFAULT_TOOL = { emoji: '🔧', cat: 'other' };
+
+    function categorize(name) {
+      return TOOL_CATEGORIES[name] || DEFAULT_TOOL;
+    }
+
+    function categoryStats() {
+      const counts = {};
+      for (const step of progressSteps) {
+        const { emoji, category } = step;
+        if (!counts[category]) counts[category] = { emoji, count: 0 };
+        counts[category].count++;
+      }
+      return Object.values(counts).map(c => `${c.emoji} ${c.count}`).join(' ');
+    }
+
+    function progressText() {
+      if (!progressSteps.length) return '';
+      const latest = progressSteps[progressSteps.length - 1];
+      const line = `${latest.emoji} ${latest.description}`;
+      if (progressSteps.length <= 1) return line;
+      return `${line}\n-# ⚙ ${progressSteps.length} · ${categoryStats()}`;
+    }
+
+    function sendOrEditProgress() {
+      const text = progressText();
+      if (!progressMsg) {
+        message.channel.send(text).then(msg => {
+          progressMsg = msg;
+          lastEditTime = Date.now();
+        }).catch(err => log.debug(`Progress send failed: ${err.message}`));
+      } else if (Date.now() - lastEditTime > EDIT_THROTTLE) {
+        progressMsg.edit(text).catch(err => log.debug(`Progress edit failed: ${err.message}`));
+        lastEditTime = Date.now();
+      } else {
+        if (pendingEdit) clearTimeout(pendingEdit);
+        pendingEdit = setTimeout(() => {
+          if (progressMsg) {
+            progressMsg.edit(progressText()).catch(() => {});
+            lastEditTime = Date.now();
+          }
+          pendingEdit = null;
+        }, EDIT_THROTTLE - (Date.now() - lastEditTime));
+      }
+      progressQueued = false;
+    }
 
     const TIMEOUT_CONFIRM_WAIT = 60000;
 
@@ -398,8 +466,40 @@ function setupEventHandlers() {
       }
 
       if (event.type === 'tool_start') {
-        stepCount++;
-        log.debug(`Tool [${stepCount}]: ${event.name} — ${event.description}`);
+        const { emoji, cat } = categorize(event.name);
+        progressSteps.push({ name: event.name, description: event.description, category: cat, emoji });
+        log.debug(`Tool [${progressSteps.length}]: ${event.name} — ${event.description}`);
+
+        if (!showProgress) return;
+
+        const elapsed = Date.now() - requestStart;
+        if (elapsed >= PROGRESS_DELAY) {
+          sendOrEditProgress();
+        } else if (!progressDelayTimer) {
+          progressQueued = true;
+          progressDelayTimer = setTimeout(() => {
+            progressDelayTimer = null;
+            if (progressQueued) sendOrEditProgress();
+          }, PROGRESS_DELAY - elapsed);
+        } else {
+          progressQueued = true;
+        }
+      } else if (event.type === 'done') {
+        if (progressDelayTimer) {
+          clearTimeout(progressDelayTimer);
+          progressDelayTimer = null;
+        }
+        if (pendingEdit) clearTimeout(pendingEdit);
+        if (showProgress && progressMsg) {
+          let completed = `✅ Done · ${progressSteps.length} steps`;
+          completed += `\n-# ${categoryStats()}`;
+          if (event.agentInputTokens || event.agentOutputTokens) {
+            const fmt = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+            const agentTotal = event.agentInputTokens + event.agentOutputTokens;
+            completed += ` · ⚡ ${fmt(agentTotal)} (${fmt(event.agentInputTokens)}in/${fmt(event.agentOutputTokens)}out)`;
+          }
+          progressMsg.edit(completed).catch(() => {});
+        }
       }
     };
 
@@ -499,6 +599,11 @@ function setupEventHandlers() {
       }
     } catch (err) {
       stopTyping();
+      if (pendingEdit) clearTimeout(pendingEdit);
+      if (showProgress && progressMsg) {
+        const failed = `❌ Failed · ${progressSteps.length} steps\n-# ${categoryStats()}`;
+        progressMsg.edit(failed).catch(() => {});
+      }
       log.error(`Error handling message from ${message.author.tag}:`, err.message);
       const errSanitized = sanitizeOutput(`Something went wrong: ${err.message.slice(0, 200)}`, wsPath);
       await message.channel.send(errSanitized.safe ? errSanitized.text : 'Something went wrong.').catch(() => {});
