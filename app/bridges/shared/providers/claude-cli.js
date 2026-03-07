@@ -269,11 +269,15 @@ function processStreamEvent(raw, handle, state) {
         state.currentToolInput = '';
         state.currentToolId = event.content_block.id || '';
       }
+      // Track block type to filter out thinking blocks
+      state.currentBlockType = event.content_block?.type || 'text';
       state.currentText = '';
       break;
 
     case 'content_block_delta':
       if (event.delta?.type === 'text_delta' && event.delta.text) {
+        // Skip thinking/reasoning blocks — only collect visible text
+        if (state.currentBlockType === 'thinking') break;
         state.currentText += event.delta.text;
         handle.emit('text_delta', { text: event.delta.text });
       }
@@ -430,6 +434,7 @@ class ClaudeCLIProvider extends BaseProvider {
     const state = {
       textBlocks: [],
       currentText: '',
+      currentBlockType: 'text',
       inputTokens: 0,
       outputTokens: 0,
       currentToolName: '',
