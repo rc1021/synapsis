@@ -299,7 +299,7 @@ add_to_path() {
   if [ -f "$rc" ] && grep -q "$BIN_DIR" "$rc" 2>/dev/null; then
     return 0  # already added
   fi
-  [ -f "$rc" ] || { [ "$rc" = "$HOME/.zshrc" ] && touch "$rc" || return 1; }
+  [ -f "$rc" ] || return 1
   echo "" >> "$rc"
   echo "# Synapsis" >> "$rc"
   echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$rc"
@@ -307,6 +307,11 @@ add_to_path() {
 }
 
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$BIN_DIR"; then
+  # On fresh macOS, ~/.zshrc may not exist yet — create it
+  if [ "$(uname)" = "Darwin" ] && [ ! -f "$HOME/.zshrc" ]; then
+    touch "$HOME/.zshrc"
+  fi
+
   added=false
   for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
     if add_to_path "$rc"; then added=true; fi
@@ -328,6 +333,7 @@ echo "    synapsis status     # check service"
 echo "    synapsis logs       # tail logs"
 echo "    synapsis restart    # restart"
 echo "    synapsis stop       # stop"
+echo "    synapsis setup      # setup / configure"
 echo ""
 echo "  Edit config:  \$EDITOR $INSTALL_DIR/app/.env"
 echo ""
