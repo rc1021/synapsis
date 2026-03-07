@@ -103,22 +103,9 @@ function buildSandboxProfile(workspacePath) {
 ${denyRules}
 ${otherWsDenyRules}
 
-;; WRITE: allow by default, deny dangerous paths
+;; WRITE: allow all (Claude CLI needs various system paths)
+;; Write safety is enforced by: disallowedTools, system prompt BASE_RULES, security monitor
 (allow file-write*)
-
-;; DENY writes to sensitive locations
-(deny file-write* (subpath "${esc(home)}/.ssh"))
-(deny file-write* (subpath "${esc(home)}/.gnupg"))
-(deny file-write* (subpath "${esc(home)}/Library/LaunchAgents"))
-(deny file-write* (subpath "${esc(home)}/Library/LaunchDaemons"))
-
-;; DENY writes to project source code and config
-(deny file-write* (literal "${esc(path.join(PROJECT_DIR, 'CLAUDE.md'))}"))
-(deny file-write* (literal "${esc(path.join(appDir, '.env'))}"))
-(deny file-write* (subpath "${esc(path.join(appDir, 'src'))}"))
-(deny file-write* (subpath "${esc(path.join(appDir, 'bridges'))}"))
-(deny file-write* (subpath "${esc(path.join(appDir, 'scheduler'))}"))
-(deny file-write* (subpath "${esc(path.join(appDir, 'node_modules'))}"))
 `;
 }
 
