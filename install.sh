@@ -299,7 +299,7 @@ add_to_path() {
   if [ -f "$rc" ] && grep -q "$BIN_DIR" "$rc" 2>/dev/null; then
     return 0  # already added
   fi
-  [ -f "$rc" ] || return 1
+  [ -f "$rc" ] || { [ "$rc" = "$HOME/.zshrc" ] && touch "$rc" || return 1; }
   echo "" >> "$rc"
   echo "# Synapsis" >> "$rc"
   echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$rc"
