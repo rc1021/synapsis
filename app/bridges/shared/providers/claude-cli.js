@@ -103,14 +103,15 @@ function buildSandboxProfile(workspacePath) {
 ${denyRules}
 ${otherWsDenyRules}
 
-;; WRITE: workspace + system temp + Claude config + standard app dirs
+;; WRITE: workspace + system temp + Claude config
 (allow file-write* (subpath "${esc(workspacePath)}"))
 (allow file-write* (subpath "/private/tmp"))
 (allow file-write* (subpath "/private/var"))
 (allow file-write* (subpath "${esc(home)}/.claude"))
-(allow file-write* (subpath "${esc(home)}/.config"))
-(allow file-write* (subpath "${esc(home)}/.local"))
-(allow file-write* (subpath "${esc(home)}/Library"))
+
+;; DEBUG: log denied write attempts to find required paths
+;; Remove after finding the correct paths
+(with-log-denials (deny file-write*))
 `;
 }
 
