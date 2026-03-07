@@ -229,27 +229,31 @@ tar xzf "$TMPDIR_DL/synapsis.tar.gz" -C "$TMPDIR_DL"
 # Prepare install directory
 mkdir -p "$INSTALL_DIR"
 
+# User data paths to preserve across updates (relative to app/)
+PRESERVE_PATHS=".env workspaces logs scheduler/markers scheduler/job-queue scheduler/logs"
+
 # Preserve user data on update
 if [ "$IS_UPDATE" = true ]; then
   info "Preserving user data..."
-  # Back up files that should survive updates
-  for preserve in .env workspaces logs; do
+  for preserve in $PRESERVE_PATHS; do
     if [ -e "$INSTALL_DIR/app/$preserve" ]; then
-      mv "$INSTALL_DIR/app/$preserve" "$TMPDIR_DL/_preserve_$preserve"
+      mkdir -p "$TMPDIR_DL/_preserve/$(dirname "$preserve")"
+      mv "$INSTALL_DIR/app/$preserve" "$TMPDIR_DL/_preserve/$preserve"
     fi
   done
 fi
 
-# Copy new files (excluding .git-related stuff)
+# Copy new files
 rm -rf "$INSTALL_DIR/app" "$INSTALL_DIR/install.sh" "$INSTALL_DIR/README.md"
 cp -R "$TMPDIR_DL/$STRIP_PREFIX/app" "$INSTALL_DIR/app"
 cp -f "$TMPDIR_DL/$STRIP_PREFIX/install.sh" "$INSTALL_DIR/install.sh" 2>/dev/null || true
 
 # Restore preserved data
 if [ "$IS_UPDATE" = true ]; then
-  for preserve in .env workspaces logs; do
-    if [ -e "$TMPDIR_DL/_preserve_$preserve" ]; then
-      mv "$TMPDIR_DL/_preserve_$preserve" "$INSTALL_DIR/app/$preserve"
+  for preserve in $PRESERVE_PATHS; do
+    if [ -e "$TMPDIR_DL/_preserve/$preserve" ]; then
+      mkdir -p "$INSTALL_DIR/app/$(dirname "$preserve")"
+      mv "$TMPDIR_DL/_preserve/$preserve" "$INSTALL_DIR/app/$preserve"
     fi
   done
 fi
