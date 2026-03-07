@@ -1,6 +1,6 @@
 #!/bin/bash
 # synapsis service control
-# Usage: ./ctl.sh [install|uninstall|start|stop|restart|status|logs]
+# Usage: ./ctl.sh [install|uninstall|start|stop|restart|status|logs|setup]
 
 set -euo pipefail
 
@@ -106,8 +106,48 @@ case "${1:-status}" in
   log|logs)
     tail -f "$SCRIPT_DIR/logs/synapsis.log"
     ;;
+  setup)
+    ENV_FILE="$SCRIPT_DIR/.env"
+    if [ ! -f "$ENV_FILE" ]; then
+      cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+      echo "Created .env from template"
+    fi
+    echo ""
+    echo "Current config:"
+    echo "─────────────────────────────────────"
+    grep -E '^(AI_PROVIDER|ANTHROPIC_API_KEY|DISCORD_TOKEN)=' "$ENV_FILE" | while IFS='=' read -r key val; do
+      if [ -z "$val" ] || echo "$val" | grep -q '^sk-ant-\.\.\.' ; then
+        printf "  %-20s ⚠️  not set\n" "$key"
+      else
+        masked="${val:0:8}..."
+        printf "  %-20s ✅ %s\n" "$key" "$masked"
+      fi
+    done
+    echo "─────────────────────────────────────"
+    echo ""
+    printf "Edit which setting? [1] AI_PROVIDER  [2] ANTHROPIC_API_KEY  [3] DISCORD_TOKEN  [q] quit: "
+    read -r choice
+    case "$choice" in
+      1)
+        printf "AI provider (claude-api / claude-cli) [current: $(grep '^AI_PROVIDER=' "$ENV_FILE" | cut -d= -f2)]: "
+        read -r val
+        [ -n "$val" ] && sed -i.bak "s/^AI_PROVIDER=.*/AI_PROVIDER=$val/" "$ENV_FILE" && rm -f "$ENV_FILE.bak" && echo "✅ Updated"
+        ;;
+      2)
+        printf "Anthropic API key: "
+        read -r val
+        [ -n "$val" ] && sed -i.bak "s/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=$val/" "$ENV_FILE" && rm -f "$ENV_FILE.bak" && echo "✅ Updated"
+        ;;
+      3)
+        printf "Discord bot token: "
+        read -r val
+        [ -n "$val" ] && sed -i.bak "s/^DISCORD_TOKEN=.*/DISCORD_TOKEN=$val/" "$ENV_FILE" && rm -f "$ENV_FILE.bak" && echo "✅ Updated"
+        ;;
+      q|"") ;;
+    esac
+    ;;
   *)
-    echo "Usage: $0 {install|uninstall|start|stop|restart|status|logs}"
+    echo "Usage: $0 {install|uninstall|start|stop|restart|status|logs|setup}"
     exit 1
     ;;
 esac
