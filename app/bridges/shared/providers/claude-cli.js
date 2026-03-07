@@ -227,6 +227,7 @@ function spawnProcess(args, cwd, sandbox) {
     spawnArgs = args;
   }
 
+  console.log('[DEBUG] spawn:', spawnCmd, spawnArgs.filter(a => !a.startsWith('(version')).join(' '));
   return spawn(spawnCmd, spawnArgs, {
     cwd,
     env,
