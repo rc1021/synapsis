@@ -7,6 +7,7 @@ const { splitMessage } = require('./message-splitter');
 const { parseCommand, handleCommand } = require('../../shared/command-handler');
 const wm = require('../../shared/workspace-manager');
 const { sanitizeOutput, isTextFile, TEXT_EXTENSIONS } = require('../../shared/sanitize');
+const engagement = require('../../shared/engagement');
 const log = require('./logger');
 
 const MAX_INPUT = 8000;
@@ -642,6 +643,19 @@ function setupEventHandlers() {
 
       // Append to talk-history for seed-watering trigger
       appendTalkHistory(wsPath, prompt, responseText);
+
+      // Track engagement — check if this user message is a reply to a job-initiated DM
+      if (isDM) {
+        try {
+          engagement.matchReply(wsPath, {
+            channelId: `dm:discord:${userId}`,
+            responseLength: prompt.length,
+            responseText: prompt,
+          });
+        } catch (engErr) {
+          log.debug(`Engagement match failed: ${engErr.message}`);
+        }
+      }
 
       if (!responseText.trim()) {
         await message.channel.send('(no response from Claude)');

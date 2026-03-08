@@ -87,6 +87,9 @@ function templateReplace(str, job) {
   if (job && job._talkHistory) {
     result = result.replace(/\{\{TALK_HISTORY\}\}/g, job._talkHistory);
   }
+  if (job && job._conversationPolicy) {
+    result = result.replace(/\{\{CONVERSATION_POLICY\}\}/g, job._conversationPolicy);
+  }
   return result;
 }
 

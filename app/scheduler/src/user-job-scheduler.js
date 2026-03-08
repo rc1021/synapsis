@@ -6,8 +6,12 @@ const log = require('./logger');
 const { runUserJob } = require('./job-runner');
 const wm = require('../../bridges/shared/workspace-manager');
 
+const engagement = require('../../bridges/shared/engagement');
+
 const JOB_QUEUE_DIR = path.join(__dirname, '..', 'job-queue');
 const COMMON_JOBS_FILE = path.join(__dirname, '..', 'common-jobs.json');
+const CONVERSATION_POLICY_FILE = path.join(__dirname, '..', 'specs', 'conversation-policy.md');
+const PREFERENCES_BOUNDS_FILE = path.join(__dirname, '..', 'preferences-bounds.json');
 const MAX_USER_JOBS = 500;
 const TICK_INTERVAL = 60 * 1000; // 60 seconds
 const EVENT_SCAN_INTERVAL = 10; // scan every N ticks (10 min)
@@ -17,6 +21,8 @@ const EVENT_COOLDOWN_HOURS = 4; // min hours between any two event jobs per work
 const ONBOARDING_INTERVAL_DAYS = 2; // don't nag more than once per N days
 const USER_MD_FILE = 'USER.md';
 const NOT_SET_MARKER = '_(not set)_';
+const PREFERENCES_FILE = 'preferences.json';
+const PENDING_CALLBACKS_FILE = 'pending-callbacks.json';
 
 class UserJobScheduler {
   constructor() {
@@ -26,6 +32,8 @@ class UserJobScheduler {
     const loaded = this._loadCommonJobs();
     this.eventJobs = loaded.eventJobs;
     this.onboardingJob = loaded.onboardingJob;
+    this._conversationPolicy = this._loadConversationPolicy();
+    this._preferencesBounds = this._loadPreferencesBounds();
   }
 
   _loadCommonJobs() {
@@ -53,6 +61,55 @@ class UserJobScheduler {
     } catch (err) {
       log.warn(`Failed to load common-jobs.json: ${err.message}`);
       return { eventJobs: [], onboardingJob: null };
+    }
+  }
+
+  _loadConversationPolicy() {
+    try {
+      return fs.readFileSync(CONVERSATION_POLICY_FILE, 'utf-8');
+    } catch (err) {
+      log.warn(`Failed to load conversation-policy.md: ${err.message}`);
+      return '';
+    }
+  }
+
+  _loadPreferencesBounds() {
+    try {
+      return JSON.parse(fs.readFileSync(PREFERENCES_BOUNDS_FILE, 'utf-8'));
+    } catch (err) {
+      log.warn(`Failed to load preferences-bounds.json: ${err.message}`);
+      return {};
+    }
+  }
+
+  /**
+   * Read workspace preferences.json and return override value for a given key.
+   * Key format: "jobId.param" (e.g., "seedWatering.minLines")
+   * Returns the overridden value if valid (within bounds), or defaultVal.
+   */
+  _getPreference(wsDir, key, defaultVal) {
+    try {
+      const prefsPath = path.join(wsDir, PREFERENCES_FILE);
+      if (!fs.existsSync(prefsPath)) return defaultVal;
+
+      const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
+      const [section, param] = key.split('.');
+      const val = prefs[section] && prefs[section][param];
+      if (val === undefined || val === null) return defaultVal;
+
+      // Enforce bounds
+      const bounds = this._preferencesBounds[key];
+      if (bounds) {
+        if (bounds.type === 'boolean') return !!val;
+        if (typeof val === 'number') {
+          if (bounds.min !== undefined && val < bounds.min) return bounds.min;
+          if (bounds.max !== undefined && val > bounds.max) return bounds.max;
+        }
+      }
+
+      return val;
+    } catch {
+      return defaultVal;
     }
   }
 
@@ -346,9 +403,25 @@ class UserJobScheduler {
     const markerFile = path.join(MARKERS_DIR, wm.workspaceRelPath(wsId), `.last-${job.id}`);
     const talkHistoryPath = path.join(wsDir, TALK_HISTORY_FILE);
 
+    // Preference key mapping for per-workspace overrides
+    const PREF_MAP = {
+      'seed-watering': 'seedWatering',
+      'proactive': 'proactive',
+      'idle-checkin': 'idleCheckin',
+      'discovery': 'discovery',
+      'challenge': 'challenge',
+      'weekly-synthesis': 'weeklySynthesis',
+      'reflection-prompt': 'reflectionPrompt',
+      'memory-consolidation': 'memoryConsolidation',
+    };
+    const prefSection = PREF_MAP[job.id];
+
     switch (type) {
       case 'talk-history': {
-        const minLines = job.trigger.minLines || 30;
+        const defaultMinLines = job.trigger.minLines || 30;
+        const minLines = prefSection
+          ? this._getPreference(wsDir, `${prefSection}.minLines`, defaultMinLines)
+          : defaultMinLines;
         if (!fs.existsSync(talkHistoryPath)) return false;
         const lineCount = parseInt(
           execSync(`wc -l < "${talkHistoryPath}"`, { encoding: 'utf-8', timeout: 5000 }).trim(), 10
@@ -357,7 +430,10 @@ class UserJobScheduler {
       }
 
       case 'proactive': {
-        const intervalDays = job.trigger.intervalDays || 1;
+        const defaultInterval = job.trigger.intervalDays || 1;
+        const intervalDays = prefSection
+          ? this._getPreference(wsDir, `${prefSection}.intervalDays`, defaultInterval)
+          : defaultInterval;
         const activeDays = job.trigger.activeDays || 7;
         // Skip if marker is too recent
         if (this._markerTooRecent(markerFile, intervalDays)) return false;
@@ -366,7 +442,10 @@ class UserJobScheduler {
       }
 
       case 'idle-checkin': {
-        const idleDays = job.trigger.idleDays || 3;
+        const defaultIdle = job.trigger.idleDays || 3;
+        const idleDays = prefSection
+          ? this._getPreference(wsDir, `${prefSection}.idleDays`, defaultIdle)
+          : defaultIdle;
         // Skip if marker is too recent (don't nag)
         if (this._markerTooRecent(markerFile, idleDays)) return false;
         // Trigger if user HAS a talk-history (not brand new) but hasn't chatted in idleDays
@@ -375,11 +454,58 @@ class UserJobScheduler {
       }
 
       case 'discovery': {
-        const intervalDays = job.trigger.intervalDays || 5;
+        const defaultInterval = job.trigger.intervalDays || 5;
+        const intervalDays = prefSection
+          ? this._getPreference(wsDir, `${prefSection}.intervalDays`, defaultInterval)
+          : defaultInterval;
         // Skip if marker is too recent
         if (this._markerTooRecent(markerFile, intervalDays)) return false;
         // Trigger if talk-history exists (user has used the bot before)
         return fs.existsSync(talkHistoryPath);
+      }
+
+      case 'callback': {
+        // Trigger if pending-callbacks.json has items whose targetDate <= today
+        try {
+          const cbPath = path.join(wsDir, PENDING_CALLBACKS_FILE);
+          if (!fs.existsSync(cbPath)) return false;
+          const callbacks = JSON.parse(fs.readFileSync(cbPath, 'utf-8'));
+          const today = new Date().toISOString().slice(0, 10);
+          return callbacks.some(cb => !cb.followedUp && cb.targetDate <= today);
+        } catch {
+          return false;
+        }
+      }
+
+      case 'spaced-review': {
+        // Trigger if any learning notes are due for review
+        try {
+          const learningDir = path.join(wsDir, 'memory', 'learning');
+          if (!fs.existsSync(learningDir)) return false;
+          // Check for notes that need review at day 2, 7, 30
+          const result = execSync(
+            `find "${learningDir}" -name "*.md" -type f 2>/dev/null | head -50`,
+            { encoding: 'utf-8', timeout: 10000 }
+          ).trim();
+          if (!result) return false;
+          const reviewIntervals = [2, 7, 30]; // days
+          const now = Date.now();
+          const markerDir = path.join(MARKERS_DIR, wm.workspaceRelPath(wsId));
+          for (const filePath of result.split('\n').filter(Boolean)) {
+            const stat = fs.statSync(filePath);
+            const ageDays = (now - stat.birthtimeMs) / 86400000;
+            for (const interval of reviewIntervals) {
+              if (ageDays >= interval && ageDays < interval + 2) {
+                const noteId = path.basename(filePath, '.md');
+                const reviewMarker = path.join(markerDir, `.reviewed-${noteId}-d${interval}`);
+                if (!fs.existsSync(reviewMarker)) return true;
+              }
+            }
+          }
+          return false;
+        } catch {
+          return false;
+        }
       }
 
       default:
@@ -432,6 +558,7 @@ class UserJobScheduler {
     const jobWithContext = {
       ...job,
       _talkHistory: talkHistory,
+      _conversationPolicy: this._conversationPolicy,
       notify: { when: 'not_match', match: '_SKIP' },
     };
 
@@ -450,8 +577,8 @@ class UserJobScheduler {
       fs.writeFileSync(path.join(markerDir, '.last-event'), now);
     }
 
-    // Archive talk-history only for talk-history trigger
-    if (triggerType === 'talk-history' && fs.existsSync(talkHistoryPath)) {
+    // Archive talk-history only for jobs that explicitly opt in
+    if (job.archiveTalkHistory && fs.existsSync(talkHistoryPath)) {
       const archiveDir = path.join(wsAbsPath, 'talk-history-archive');
       fs.mkdirSync(archiveDir, { recursive: true });
       const ts = new Date().toISOString().replace(/[:.]/g, '-');
@@ -557,6 +684,16 @@ class UserJobScheduler {
     // Phase 3: scan event triggers (every N ticks)
     if (this.tickCount % EVENT_SCAN_INTERVAL === 0) {
       await this._scanEventTriggers();
+
+      // Expire old engagement pending entries
+      try {
+        const wsDirs = this._getAllWorkspaceDirs();
+        for (const { wsDir } of wsDirs) {
+          engagement.expirePending(wsDir);
+        }
+      } catch (err) {
+        log.debug(`Engagement expiry error: ${err.message}`);
+      }
     }
   }
 

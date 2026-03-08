@@ -2,6 +2,7 @@ const { execFile } = require('child_process');
 const path = require('path');
 const log = require('./logger');
 const wm = require('../../bridges/shared/workspace-manager');
+const engagement = require('../../bridges/shared/engagement');
 
 const CHANNELS_DIR = path.join(__dirname, '..', '..', 'channels');
 
@@ -100,6 +101,19 @@ async function notifyAllBindings(wsAbsPath, job, output, error, files) {
     if (bridge && typeof bridge.sendDM === 'function') {
       try {
         await bridge.sendDM(userId, message, files);
+
+        // Record pending engagement entry for tracking
+        if (job.id && !error) {
+          try {
+            engagement.writePending(wsAbsPath, {
+              jobId: job.id,
+              channelId: `dm:${bridgeName}:${userId}`,
+              timestamp: new Date().toISOString(),
+            });
+          } catch (engErr) {
+            log.debug(`Engagement tracking failed: ${engErr.message}`);
+          }
+        }
       } catch (err) {
         log.warn(`Failed to notify ${binding}: ${err.message}`);
       }
