@@ -22,6 +22,7 @@ const BLOCKED_FILES = new Set([
 ]);
 
 const BLOCKED_EXTENSIONS = new Set(['.new']);
+const HIDDEN_PATTERNS = [/^\./, /^node_modules$/]; // dotfiles (.DS_Store etc), node_modules
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -56,11 +57,13 @@ function sendFile(res, filePath) {
   const ext = path.extname(filePath).toLowerCase();
   const mime = MIME_TYPES[ext] || 'application/octet-stream';
   const stat = fs.statSync(filePath);
+  const basename = path.basename(filePath);
+  const encodedName = encodeURIComponent(basename);
 
   res.writeHead(200, {
     'Content-Type': mime,
     'Content-Length': stat.size,
-    'Content-Disposition': `inline; filename="${path.basename(filePath)}"`,
+    'Content-Disposition': `inline; filename*=UTF-8''${encodedName}`,
   });
   fs.createReadStream(filePath).pipe(res);
 }
@@ -176,9 +179,10 @@ function handleListFiles(req, res, params) {
 
     const entries = [];
     for (const name of fs.readdirSync(absPath)) {
-      // Filter blocked files
+      // Filter blocked/hidden files
       if (BLOCKED_FILES.has(name)) continue;
       if (BLOCKED_EXTENSIONS.has(path.extname(name))) continue;
+      if (HIDDEN_PATTERNS.some(p => p.test(name))) continue;
 
       const entryPath = path.join(absPath, name);
       try {
