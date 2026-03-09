@@ -20,6 +20,7 @@ const EVENT_SCAN_INTERVAL = 10; // scan every N ticks (10 min)
 const TALK_HISTORY_FILE = 'talk-history.jsonl';
 const MARKERS_DIR = path.join(__dirname, '..', 'markers');
 const EVENT_COOLDOWN_HOURS = 4; // min hours between any two event jobs per workspace
+const NON_COOLDOWN_MIN_HOURS = 4; // min hours between repeated non-cooldown event jobs (talk-history, callback, spaced-review)
 const ONBOARDING_INTERVAL_DAYS = 2; // don't nag more than once per N days
 const USER_MD_FILE = 'USER.md';
 const NOT_SET_MARKER = '_(not set)_';
@@ -592,6 +593,8 @@ class UserJobScheduler {
 
     switch (type) {
       case 'talk-history': {
+        // Guard: don't re-trigger if this job ran recently
+        if (this._markerTooRecent(markerFile, NON_COOLDOWN_MIN_HOURS / 24)) return false;
         const defaultMinLines = job.trigger.minLines || 30;
         const minLines = prefSection
           ? this._getPreference(wsDir, `${prefSection}.minLines`, defaultMinLines)
@@ -639,6 +642,8 @@ class UserJobScheduler {
       }
 
       case 'callback': {
+        // Guard: don't re-trigger if this job ran recently
+        if (this._markerTooRecent(markerFile, NON_COOLDOWN_MIN_HOURS / 24)) return false;
         // Trigger if pending-callbacks.json has items whose targetDate <= today
         try {
           const cbPath = path.join(wsDir, PENDING_CALLBACKS_FILE);
@@ -652,6 +657,8 @@ class UserJobScheduler {
       }
 
       case 'spaced-review': {
+        // Guard: don't re-trigger if this job ran recently
+        if (this._markerTooRecent(markerFile, NON_COOLDOWN_MIN_HOURS / 24)) return false;
         // Trigger if any learning notes are due for review
         try {
           const learningDir = path.join(wsDir, 'memory', 'learning');
@@ -665,6 +672,7 @@ class UserJobScheduler {
           const reviewIntervals = [2, 7, 30]; // days
           const now = Date.now();
           const markerDir = path.join(MARKERS_DIR, wm.workspaceRelPath(wsId));
+          const dueNotes = [];
           for (const filePath of result.split('\n').filter(Boolean)) {
             const stat = fs.statSync(filePath);
             const ageDays = (now - stat.birthtimeMs) / 86400000;
@@ -672,11 +680,20 @@ class UserJobScheduler {
               if (ageDays >= interval && ageDays < interval + 2) {
                 const noteId = path.basename(filePath, '.md');
                 const reviewMarker = path.join(markerDir, `.reviewed-${noteId}-d${interval}`);
-                if (!fs.existsSync(reviewMarker)) return true;
+                if (!fs.existsSync(reviewMarker)) {
+                  dueNotes.push({ noteId, interval, markerDir });
+                }
               }
             }
           }
-          return false;
+          if (dueNotes.length === 0) return false;
+          // Write per-note review markers upfront to prevent re-triggering
+          fs.mkdirSync(dueNotes[0].markerDir, { recursive: true });
+          for (const { noteId, interval, markerDir: md } of dueNotes) {
+            const reviewMarker = path.join(md, `.reviewed-${noteId}-d${interval}`);
+            fs.writeFileSync(reviewMarker, new Date().toISOString());
+          }
+          return true;
         } catch {
           return false;
         }
