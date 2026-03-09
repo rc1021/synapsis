@@ -255,12 +255,11 @@ info "Installing Node.js dependencies"
 npm install --no-fund --no-audit
 
 info "Installing Python dependencies (youtube-transcript-api, openai-whisper)"
-# Ensure pip is available
-python3 -m ensurepip --upgrade 2>/dev/null || true
-if python3 -m pip install youtube-transcript-api openai-whisper 2>&1; then
+if python3 -m pip install --user youtube-transcript-api openai-whisper 2>&1 || \
+   python3 -m pip install --break-system-packages --user youtube-transcript-api openai-whisper 2>&1; then
   info "Python dependencies installed"
 else
-  warn "Python deps install failed — run 'python3 -m pip install youtube-transcript-api openai-whisper' manually"
+  warn "Python deps install failed — run 'python3 -m pip install --break-system-packages --user youtube-transcript-api openai-whisper' manually"
 fi
 
 # ── .env setup (first install only) ─────────────────────
