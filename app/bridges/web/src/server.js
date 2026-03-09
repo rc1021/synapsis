@@ -151,9 +151,13 @@ function handleDash(req, res, params) {
   const sessionId = auth.createSession(tokenData.wsRel);
   log.info(`Web session created for workspace ${tokenData.wsRel}`);
 
+  // Support deep link: /dash?t=xxx&path=some/file.md
+  const filePath = params.get('path');
+  const location = filePath ? `/#${encodeURIComponent(filePath)}` : '/';
+
   res.writeHead(302, {
     'Set-Cookie': auth.sessionCookie(sessionId),
-    'Location': '/',
+    'Location': location,
   });
   res.end();
 }

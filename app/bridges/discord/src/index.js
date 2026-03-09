@@ -677,16 +677,18 @@ function setupEventHandlers() {
 
       let responseText = result.text || '';
 
-      // Replace web access marker with actual URL
-      const WEB_MARKER = '[REQUEST_WEB_ACCESS]';
-      if (responseText.includes(WEB_MARKER)) {
-        const wsRel = wm.readIndex('discord', userId);
-        if (wsRel) {
-          const url = webBridge.generateAccessUrl(wsRel);
-          responseText = responseText.replace(WEB_MARKER, url);
-        } else {
-          responseText = responseText.replace(WEB_MARKER, '(web dashboard unavailable)');
-        }
+      // Replace web access markers with actual URLs
+      const wsRel = wm.readIndex('discord', userId);
+      if (wsRel) {
+        // [REQUEST_WEB_ACCESS] → dashboard root
+        responseText = responseText.replace(/\[REQUEST_WEB_ACCESS\]/g, webBridge.generateAccessUrl(wsRel));
+        // [REQUEST_WEB_FILE:path] → deep link to specific file
+        responseText = responseText.replace(/\[REQUEST_WEB_FILE:([^\]]+)\]/g, (_, filePath) => {
+          return webBridge.generateAccessUrl(wsRel, filePath.trim());
+        });
+      } else {
+        responseText = responseText.replace(/\[REQUEST_WEB_ACCESS\]/g, '(web dashboard unavailable)');
+        responseText = responseText.replace(/\[REQUEST_WEB_FILE:[^\]]+\]/g, '(web dashboard unavailable)');
       }
 
       // Append to talk-history for seed-watering trigger

@@ -356,5 +356,12 @@
 
   // --- Init ---
 
-  navigateTo('');
+  // Support deep link via hash: /#path/to/file.md
+  const hashPath = decodeURIComponent(location.hash.slice(1));
+  if (hashPath) {
+    const dir = hashPath.includes('/') ? hashPath.split('/').slice(0, -1).join('/') : '';
+    navigateTo(dir).then(() => selectFile(hashPath));
+  } else {
+    navigateTo('');
+  }
 })();

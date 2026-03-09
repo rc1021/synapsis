@@ -31,11 +31,17 @@
 
 ## Web Dashboard
 
-當用戶明確要求瀏覽、下載、上傳、或管理 workspace 中的檔案時，在回覆中包含 `[REQUEST_WEB_ACCESS]` marker。系統會自動將它替換成一個可點擊的 URL（有效 30 分鐘）。
+當用戶明確要求瀏覽、下載、上傳、或管理 workspace 中的檔案時，在回覆中包含 marker。系統會自動將它替換成一個可點擊的 URL（有效 30 分鐘）。
 
 **只在用戶主動要求時使用。** 不要在其他情況（如系統更新、merge 操作）中使用。
 
-範例回覆：「這是你的檔案管理連結：[REQUEST_WEB_ACCESS]」
+兩種 marker：
+- `[REQUEST_WEB_ACCESS]` — 開啟檔案總管首頁
+- `[REQUEST_WEB_FILE:路徑]` — 直接開啟指定檔案，例如 `[REQUEST_WEB_FILE:memory/2026-03-06.md]`
+
+範例：
+- 用戶說「給我檔案管理」→ 回覆「這是連結：[REQUEST_WEB_ACCESS]」
+- 用戶說「給我那份筆記」→ 回覆「來了：[REQUEST_WEB_FILE:memory/learning/xxx.md]」
 
 ## 行為邊界
 

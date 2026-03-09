@@ -13,11 +13,14 @@ function getPublicUrl() {
 
 /**
  * Generate a web dashboard access URL for a workspace.
- * Called by bridge marker interception.
+ * @param {string} wsRel - Workspace relative path
+ * @param {string} [filePath] - Optional file path for deep linking
  */
-function generateAccessUrl(wsRel) {
+function generateAccessUrl(wsRel, filePath) {
   const token = createWebToken(wsRel);
-  return `${getPublicUrl()}/dash?t=${token}`;
+  let url = `${getPublicUrl()}/dash?t=${token}`;
+  if (filePath) url += `&path=${encodeURIComponent(filePath)}`;
+  return url;
 }
 
 async function start() {
