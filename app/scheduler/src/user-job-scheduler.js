@@ -36,6 +36,7 @@ class UserJobScheduler {
     const loaded = this._loadCommonJobs();
     this.eventJobs = loaded.eventJobs;
     this.onboardingJob = loaded.onboardingJob;
+    this.featureIntroJob = loaded.featureIntroJob;
     this._preferencesBounds = this._loadPreferencesBounds();
   }
 
@@ -45,6 +46,7 @@ class UserJobScheduler {
       const data = JSON.parse(raw);
 
       const onboardingJob = data.onboardingJob || null;
+      const featureIntroJob = data.featureIntroJob || null;
       const jobs = data.eventJobs || [];
 
       // Pre-resolve specFile content
@@ -59,11 +61,11 @@ class UserJobScheduler {
         }
       }
 
-      log.info(`Loaded ${jobs.length} event job(s)${onboardingJob ? ' + onboarding' : ''}`);
-      return { eventJobs: jobs, onboardingJob };
+      log.info(`Loaded ${jobs.length} event job(s)${onboardingJob ? ' + onboarding' : ''}${featureIntroJob ? ' + feature-intro' : ''}`);
+      return { eventJobs: jobs, onboardingJob, featureIntroJob };
     } catch (err) {
       log.warn(`Failed to load common-jobs.json: ${err.message}`);
-      return { eventJobs: [], onboardingJob: null };
+      return { eventJobs: [], onboardingJob: null, featureIntroJob: null };
     }
   }
 
@@ -409,6 +411,28 @@ class UserJobScheduler {
           log.error(`Onboarding failed for ${wsId}: ${err.message}`);
         }
         continue; // skip normal event jobs for this workspace
+      }
+
+      // Feature intro: one-time, runs after onboarding is done and workspace is ≥ 2 days old
+      if (this.featureIntroJob) {
+        const introMarker = path.join(MARKERS_DIR, wm.workspaceRelPath(wsId), '.last-feature-intro');
+        if (!fs.existsSync(introMarker) && !onCooldown) {
+          // Check workspace age ≥ 2 days (use profile createdAt or talk-history mtime)
+          const profile = wm.readProfile(wsDir);
+          const createdAt = profile?.createdAt ? new Date(profile.createdAt).getTime() : 0;
+          const ageMs = createdAt ? Date.now() - createdAt : Infinity;
+          const FEATURE_INTRO_DELAY_DAYS = 2;
+
+          if (ageMs >= FEATURE_INTRO_DELAY_DAYS * 86400000) {
+            try {
+              log.info(`Feature intro for ${wsId}`);
+              await this._runEventJob(this.featureIntroJob, wsId, wsDir);
+            } catch (err) {
+              log.error(`Feature intro failed for ${wsId}: ${err.message}`);
+            }
+            continue; // skip normal event jobs this cycle
+          }
+        }
       }
 
       for (const job of this.eventJobs) {
