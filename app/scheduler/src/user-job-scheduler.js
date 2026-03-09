@@ -125,6 +125,9 @@ class UserJobScheduler {
         if (currentVersion < '1.1.0') {
           await this._migrateToV110(wsId, wsDir, profile);
         }
+        if (currentVersion < '1.2.0') {
+          this._migrateToV120(wsId, wsDir);
+        }
 
         // Update version
         profile.templateVersion = CURRENT_TEMPLATE_VERSION;
@@ -265,6 +268,41 @@ class UserJobScheduler {
       await notifyAllBindings(wsDir, { id: 'system-upgrade', name: 'System upgrade' }, message, null);
     } catch (err) {
       log.warn(`Migration notification failed for ${wsId}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Migrate workspace to v1.2.0:
+   * - Write CLAUDE.md.new with updated template (includes Web Dashboard section)
+   * - Clear session store
+   */
+  _migrateToV120(wsId, wsDir) {
+    log.info(`Migrating workspace ${wsId} to v1.2.0`);
+
+    const claudeMdPath = path.join(wsDir, 'CLAUDE.md');
+    const newClaudeMdTemplate = path.join(TEMPLATE_DIR, 'CLAUDE.md');
+
+    if (fs.existsSync(newClaudeMdTemplate) && fs.existsSync(claudeMdPath)) {
+      const existing = fs.readFileSync(claudeMdPath, 'utf-8');
+
+      // Only write .new if the workspace doesn't already have web dashboard info
+      if (!existing.includes('REQUEST_WEB_ACCESS')) {
+        const newContent = fs.readFileSync(newClaudeMdTemplate, 'utf-8');
+        fs.writeFileSync(path.join(wsDir, 'CLAUDE.md.new'), newContent);
+
+        const notice = '> **⚠️ 系統升級通知：** 有新版操作手冊 `CLAUDE.md.new`。請讀取它，將有用的新段落整合到這份文件中，然後刪除 `CLAUDE.md.new`。\n\n';
+        if (!existing.includes('CLAUDE.md.new')) {
+          fs.writeFileSync(claudeMdPath, notice + existing);
+        }
+        log.info(`Workspace ${wsId}: CLAUDE.md.new written (v1.2.0 web dashboard)`);
+      }
+    }
+
+    // Clear session store to force new sessions
+    const sessionFile = wm.sessionStorePath(wsDir);
+    if (fs.existsSync(sessionFile)) {
+      fs.unlinkSync(sessionFile);
+      log.info(`Workspace ${wsId}: session store cleared (v1.2.0)`);
     }
   }
 
