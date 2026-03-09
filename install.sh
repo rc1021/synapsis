@@ -164,6 +164,8 @@ require_cmd() {
 require_cmd node node "https://nodejs.org"
 require_cmd npm npm "https://nodejs.org"
 require_cmd curl curl "https://curl.se"
+require_cmd python3 python3 "https://www.python.org"
+require_cmd yt-dlp yt-dlp "https://github.com/yt-dlp/yt-dlp"
 
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 if [ "$NODE_MAJOR" -lt 22 ] 2>/dev/null; then
@@ -249,8 +251,13 @@ cp -f "$TMPDIR_DL/$STRIP_PREFIX/install.sh" "$INSTALL_DIR/install.sh" 2>/dev/nul
 cd "$INSTALL_DIR/app"
 
 # ── dependencies ─────────────────────────────────────────
-info "Installing dependencies"
+info "Installing Node.js dependencies"
 npm install --no-fund --no-audit
+
+info "Installing Python dependencies (youtube-transcript-api, openai-whisper)"
+pip3 install --quiet youtube-transcript-api openai-whisper 2>/dev/null || \
+  python3 -m pip install --quiet youtube-transcript-api openai-whisper 2>/dev/null || \
+  warn "Python deps install failed — run 'pip3 install youtube-transcript-api openai-whisper' manually"
 
 # ── .env setup (first install only) ─────────────────────
 if [ ! -f .env ]; then
