@@ -158,6 +158,34 @@ const slashCommands = [
       })
       .setRequired(true)),
   new SlashCommandBuilder()
+    .setName('dashboard')
+    .setDescription('Open file manager')
+    .setDescriptionLocalizations({
+      'zh-TW': '開啟檔案管理',
+      'zh-CN': '打开文件管理',
+      ja: 'ファイルマネージャーを開く',
+      ko: '파일 관리자 열기',
+    }),
+  new SlashCommandBuilder()
+    .setName('todo')
+    .setDescription('List or add todos')
+    .setDescriptionLocalizations({
+      'zh-TW': '列出或新增待辦事項',
+      'zh-CN': '列出或新增待办事项',
+      ja: 'TODOの一覧・追加',
+      ko: '할 일 목록/추가',
+    })
+    .addStringOption(opt => opt
+      .setName('item')
+      .setDescription('Todo item to add (leave empty to list)')
+      .setDescriptionLocalizations({
+        'zh-TW': '要新增的待辦（留空列出）',
+        'zh-CN': '要新增的待办（留空列出）',
+        ja: '追加するTODO（空で一覧）',
+        ko: '추가할 할 일 (비워두면 목록)',
+      })
+      .setRequired(false)),
+  new SlashCommandBuilder()
     .setName('help')
     .setDescription('Show available commands')
     .setDescriptionLocalizations({
@@ -256,7 +284,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /dashboard, /todo, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }
@@ -276,6 +304,9 @@ function setupEventHandlers() {
       args.push(interaction.options.getString('code'));
     } else if (commandName === 'bind') {
       args.push(interaction.options.getString('token'));
+    } else if (commandName === 'todo') {
+      const item = interaction.options.getString('item');
+      if (item) args.push(item);
     }
 
     const wsPath = wm.resolveWorkspace(bridge, userId);

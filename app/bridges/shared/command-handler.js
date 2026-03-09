@@ -3,7 +3,11 @@ const { createLogger } = require('./logger');
 const log = createLogger('commands', {
   logDir: process.env.LOG_DIR || path.join(__dirname, '..', '..', 'logs'),
 });
+const fs = require('fs');
 const wm = require('./workspace-manager');
+const webBridge = require('../web/src/index');
+
+const TODO_FILE = 'TODO.md';
 
 // Rate limit: /connection attempts per user
 const connectionAttempts = new Map(); // `${bridge}:${userId}` → { count, resetAt }
@@ -144,11 +148,73 @@ function handleCommand(bridge, userId, parsed, context) {
       return { reply: 'New conversation started.' };
     }
 
+    case 'dashboard':
+    case 'dash':
+    case 'files': {
+      if (!isRegistered) {
+        return { reply: 'You must be registered to use this command.', ephemeral: true };
+      }
+
+      const wsRel = wm.readIndex(bridge, userId);
+      if (!wsRel) {
+        return { reply: 'Workspace not found.', ephemeral: true };
+      }
+
+      const url = webBridge.generateAccessUrl(wsRel);
+      return { reply: `Here's your dashboard link (30 min):\n${url}`, ephemeral: true };
+    }
+
+    case 'todo': {
+      if (!isRegistered) {
+        return { reply: 'You must be registered to use this command.', ephemeral: true };
+      }
+
+      const wsPath = wm.resolveWorkspace(bridge, userId);
+      if (!wsPath) {
+        return { reply: 'Workspace not found.', ephemeral: true };
+      }
+
+      const todoPath = path.join(wsPath, TODO_FILE);
+      const item = args.join(' ').trim();
+
+      if (!item) {
+        // List todos
+        try {
+          if (!fs.existsSync(todoPath)) {
+            return { reply: 'No todos yet. Add one with `/todo something`', ephemeral: true };
+          }
+          const content = fs.readFileSync(todoPath, 'utf-8').trim();
+          if (!content) {
+            return { reply: 'No todos yet. Add one with `/todo something`', ephemeral: true };
+          }
+          return { reply: content, ephemeral: true };
+        } catch {
+          return { reply: 'Failed to read todos.', ephemeral: true };
+        }
+      }
+
+      // Add todo
+      try {
+        const line = `- [ ] ${item}\n`;
+        if (!fs.existsSync(todoPath)) {
+          fs.writeFileSync(todoPath, `# TODO\n\n${line}`);
+        } else {
+          fs.appendFileSync(todoPath, line);
+        }
+        return { reply: `Added: ${item}`, ephemeral: true };
+      } catch {
+        return { reply: 'Failed to add todo.', ephemeral: true };
+      }
+    }
+
     case 'help': {
       const lines = [
         '**Available commands:**',
         '`/help` — Show this list',
         '`/new` or `/reset` — Start a new conversation',
+        '`/dashboard` — Open file manager',
+        '`/todo` — List todos',
+        '`/todo <item>` — Add a todo',
         '`/connection <code>` — Register with an invite code',
         '`/share-code` — Generate a 24hr one-time invite code',
         '`/bind-token` — Generate a 5-min token for cross-platform binding',
