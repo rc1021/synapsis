@@ -271,7 +271,22 @@ async function runUserJob(job, wsId, wsAbsPath) {
     const rawPrompt = job.prompt || (job.claude && job.claude.prompt);
     if (!rawPrompt) throw new Error(`User job ${job.id} has no prompt`);
 
-    const prompt = templateReplace(rawPrompt, job);
+    let prompt = templateReplace(rawPrompt, job);
+
+    // Check for pending .new files that need AI self-merge
+    const dotNewFiles = [];
+    for (const base of ['SOUL.md', 'CLAUDE.md']) {
+      if (fs.existsSync(join(wsAbsPath, `${base}.new`))) {
+        dotNewFiles.push(base);
+      }
+    }
+    if (dotNewFiles.length > 0) {
+      const mergeInstructions = dotNewFiles.map(f =>
+        `- Read \`${f}.new\`, integrate its new structure into \`${f}\` (preserve your evolved content). Remove any "⚠️ 系統升級通知" banner from \`${f}\` if present. Do NOT try to delete \`${f}.new\` — the system will clean it up automatically.`
+      ).join('\n');
+      prompt = `## Urgent: pending system upgrade files\nBefore doing anything else, handle these:\n${mergeInstructions}\n\n${prompt}`;
+      log.info(`User job ${runKey}: injecting .new merge instructions for: ${dotNewFiles.join(', ')}`);
+    }
 
     // System decides model and timeout based on tier
     const TIERS = {
@@ -306,6 +321,17 @@ async function runUserJob(job, wsId, wsAbsPath) {
     });
 
     output = result.text || 'Job completed (no text output)';
+
+    // Clean up .new files after successful AI merge
+    for (const base of dotNewFiles) {
+      const newPath = join(wsAbsPath, `${base}.new`);
+      try {
+        fs.unlinkSync(newPath);
+        log.info(`User job ${runKey}: cleaned up ${base}.new`);
+      } catch (unlinkErr) {
+        log.warn(`User job ${runKey}: failed to delete ${base}.new: ${unlinkErr.message}`);
+      }
+    }
   } catch (err) {
     lastError = err;
     log.error(`User job ${runKey} failed: ${err.message}`);

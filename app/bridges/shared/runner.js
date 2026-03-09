@@ -86,6 +86,20 @@ function enqueue(opts) {
 async function executeJob(job) {
   try {
     const result = await runWithProvider(job);
+    // Clean up .new files after successful AI execution
+    if (job.cwd) {
+      for (const base of ['SOUL.md', 'CLAUDE.md']) {
+        const newPath = path.join(job.cwd, `${base}.new`);
+        if (fs.existsSync(newPath)) {
+          try {
+            fs.unlinkSync(newPath);
+            log.info(`Cleaned up ${base}.new in ${job.cwd}`);
+          } catch (unlinkErr) {
+            log.warn(`Failed to delete ${base}.new: ${unlinkErr.message}`);
+          }
+        }
+      }
+    }
     job.resolve(result);
   } catch (err) {
     job.reject(err);
