@@ -88,7 +88,10 @@ function isQuietHour(job) {
 }
 
 function templateReplace(str, job) {
-  let result = str.replace(/\{\{TIMESTAMP\}\}/g, new Date().toISOString());
+  const now = new Date();
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const timestamp = `${now.toISOString()} (${days[now.getDay()]})`;
+  let result = str.replace(/\{\{TIMESTAMP\}\}/g, timestamp);
   if (job && job._specContent) {
     result = result.replace(/\{\{SPEC\}\}/g, job._specContent);
   }
