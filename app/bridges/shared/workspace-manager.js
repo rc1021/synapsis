@@ -321,6 +321,25 @@ function listAllWorkspaces() {
   }
 }
 
+// --- Talk history ---
+
+const TALK_HISTORY_FILE = 'talk-history.jsonl';
+const TALK_HISTORY_MAX_FIELD = 500;
+
+function appendTalkHistory(wsPath, userMsg, assistantMsg) {
+  try {
+    const filePath = path.join(wsPath, TALK_HISTORY_FILE);
+    const entry = JSON.stringify({
+      ts: new Date().toISOString(),
+      u: userMsg.slice(0, TALK_HISTORY_MAX_FIELD),
+      a: assistantMsg.slice(0, TALK_HISTORY_MAX_FIELD),
+    }) + '\n';
+    fs.appendFileSync(filePath, entry);
+  } catch (err) {
+    log.warn(`Failed to append talk-history: ${err.message}`);
+  }
+}
+
 // --- User jobs path ---
 
 function userJobsPath(wsAbsPath) {
@@ -358,6 +377,7 @@ module.exports = {
   consumeBindToken,
   bindAccount,
   readSyncPrompt,
+  appendTalkHistory,
   userJobsPath,
   listAllWorkspaces,
 };

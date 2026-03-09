@@ -11,24 +11,8 @@ const engagement = require('../../shared/engagement');
 const log = require('./logger');
 
 const MAX_INPUT = 8000;
-const TALK_HISTORY_FILE = 'talk-history.jsonl';
-const TALK_HISTORY_MAX_FIELD = 500;
 const OUTBOX_DIR = 'outbox';
 const MAX_DISCORD_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
-
-function appendTalkHistory(wsPath, userMsg, assistantMsg) {
-  try {
-    const filePath = join(wsPath, TALK_HISTORY_FILE);
-    const entry = JSON.stringify({
-      ts: new Date().toISOString(),
-      u: userMsg.slice(0, TALK_HISTORY_MAX_FIELD),
-      a: assistantMsg.slice(0, TALK_HISTORY_MAX_FIELD),
-    }) + '\n';
-    fs.appendFileSync(filePath, entry);
-  } catch (err) {
-    log.warn(`Failed to append talk-history: ${err.message}`);
-  }
-}
 
 /**
  * Collect files from workspace outbox/ directory for Discord attachment.
@@ -642,7 +626,7 @@ function setupEventHandlers() {
       const responseText = result.text || '';
 
       // Append to talk-history for seed-watering trigger
-      appendTalkHistory(wsPath, prompt, responseText);
+      wm.appendTalkHistory(wsPath, prompt, responseText);
 
       // Track engagement — check if this user message is a reply to a job-initiated DM
       if (isDM) {

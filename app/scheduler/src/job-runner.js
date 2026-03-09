@@ -330,6 +330,11 @@ async function runUserJob(job, wsId, wsAbsPath) {
       log.error(`Notification error for user job ${runKey}:`, notifyErr.message);
     }
   }
+
+  // Append to talk-history so proactive DMs are visible to event triggers
+  if (output && !lastError) {
+    wm.appendTalkHistory(wsAbsPath, `[job:${job.id}]`, output);
+  }
 }
 
 function getRunningJobs() {
