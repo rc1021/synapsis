@@ -12,6 +12,14 @@ const OUTBOX_DIR = 'outbox';
 const MAX_OUTBOX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const PROJECT_DIR = process.env.PROJECT_DIR || resolve(join(__dirname, '../..'));
+const SHARED_SOUL_PATH = join(__dirname, '..', '..', 'SOUL.md');
+
+let _sharedSoul = '';
+try {
+  _sharedSoul = fs.readFileSync(SHARED_SOUL_PATH, 'utf-8');
+} catch (err) {
+  log.warn(`Failed to load shared SOUL.md: ${err.message}`);
+}
 
 const SCHEDULER_RULES = [
   'IMPORTANT: Your final action must always be a text output, never a tool call. The text output is captured as the job result.',
@@ -86,9 +94,6 @@ function templateReplace(str, job) {
   }
   if (job && job._talkHistory) {
     result = result.replace(/\{\{TALK_HISTORY\}\}/g, job._talkHistory);
-  }
-  if (job && job._conversationPolicy) {
-    result = result.replace(/\{\{CONVERSATION_POLICY\}\}/g, job._conversationPolicy);
   }
   return result;
 }
@@ -280,6 +285,7 @@ async function runUserJob(job, wsId, wsAbsPath) {
 
     const syncPrompt = wm.readSyncPrompt();
     const systemParts = [...SCHEDULER_RULES, ...BASE_RULES];
+    if (_sharedSoul) systemParts.push(_sharedSoul);
     if (syncPrompt) systemParts.push(syncPrompt);
 
     // Fixed whitelist — user has no control over tools

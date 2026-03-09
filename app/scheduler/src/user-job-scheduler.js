@@ -7,11 +7,13 @@ const { runUserJob } = require('./job-runner');
 const wm = require('../../bridges/shared/workspace-manager');
 
 const engagement = require('../../bridges/shared/engagement');
+const { notifyAllBindings } = require('./notifier');
 
 const JOB_QUEUE_DIR = path.join(__dirname, '..', 'job-queue');
 const COMMON_JOBS_FILE = path.join(__dirname, '..', 'common-jobs.json');
-const CONVERSATION_POLICY_FILE = path.join(__dirname, '..', 'specs', 'conversation-policy.md');
 const PREFERENCES_BOUNDS_FILE = path.join(__dirname, '..', 'preferences-bounds.json');
+const TEMPLATE_DIR = path.join(__dirname, '..', '..', 'workspace-template');
+const CURRENT_TEMPLATE_VERSION = require('../../package.json').version;
 const MAX_USER_JOBS = 500;
 const TICK_INTERVAL = 60 * 1000; // 60 seconds
 const EVENT_SCAN_INTERVAL = 10; // scan every N ticks (10 min)
@@ -32,7 +34,6 @@ class UserJobScheduler {
     const loaded = this._loadCommonJobs();
     this.eventJobs = loaded.eventJobs;
     this.onboardingJob = loaded.onboardingJob;
-    this._conversationPolicy = this._loadConversationPolicy();
     this._preferencesBounds = this._loadPreferencesBounds();
   }
 
@@ -61,15 +62,6 @@ class UserJobScheduler {
     } catch (err) {
       log.warn(`Failed to load common-jobs.json: ${err.message}`);
       return { eventJobs: [], onboardingJob: null };
-    }
-  }
-
-  _loadConversationPolicy() {
-    try {
-      return fs.readFileSync(CONVERSATION_POLICY_FILE, 'utf-8');
-    } catch (err) {
-      log.warn(`Failed to load conversation-policy.md: ${err.message}`);
-      return '';
     }
   }
 
@@ -113,7 +105,147 @@ class UserJobScheduler {
     }
   }
 
+  // --- Workspace migration ---
+
+  /**
+   * Check all workspaces and migrate those on older template versions.
+   * Runs once at startup.
+   */
+  async _migrateWorkspaces() {
+    const wsDirs = this._getAllWorkspaceDirs();
+    for (const { wsId, wsDir } of wsDirs) {
+      try {
+        const profile = wm.readProfile(wsDir);
+        if (!profile) continue;
+
+        const currentVersion = profile.templateVersion || '1.0.0';
+        if (currentVersion >= CURRENT_TEMPLATE_VERSION) continue;
+
+        if (currentVersion < '1.1.0') {
+          await this._migrateToV110(wsId, wsDir, profile);
+        }
+
+        // Update version
+        profile.templateVersion = CURRENT_TEMPLATE_VERSION;
+        wm.writeProfile(wsDir, profile);
+        log.info(`Workspace ${wsId} migrated to v${CURRENT_TEMPLATE_VERSION}`);
+      } catch (err) {
+        log.error(`Migration failed for ${wsId}: ${err.message}`);
+      }
+    }
+  }
+
+  /**
+   * Migrate workspace from v1.0.0 to v1.1.0:
+   * - IDENTITY.md Name/Emoji → USER.md "對我的設定"
+   * - Delete IDENTITY.md
+   * - Replace SOUL.md with new personal soul template
+   * - Write CLAUDE.md.new for AI to self-merge
+   * - Clean up BOOTSTRAP.md if onboarding is done
+   * - Notify user
+   */
+  async _migrateToV110(wsId, wsDir, profile) {
+    log.info(`Migrating workspace ${wsId} from v1.0.0 to v1.1.0`);
+
+    const identityPath = path.join(wsDir, 'IDENTITY.md');
+    const userMdPath = path.join(wsDir, USER_MD_FILE);
+    const soulPath = path.join(wsDir, 'SOUL.md');
+    const claudeMdPath = path.join(wsDir, 'CLAUDE.md');
+    const bootstrapPath = path.join(wsDir, 'BOOTSTRAP.md');
+
+    // 1. Extract Name/Emoji from IDENTITY.md → USER.md
+    let aiName = '';
+    let aiEmoji = '';
+    if (fs.existsSync(identityPath)) {
+      const identity = fs.readFileSync(identityPath, 'utf-8');
+      const nameMatch = identity.match(/\*\*Name:\*\*\s*(.+)/);
+      const emojiMatch = identity.match(/\*\*Emoji:\*\*\s*(.+)/);
+      if (nameMatch) aiName = nameMatch[1].trim();
+      if (emojiMatch) aiEmoji = emojiMatch[1].trim();
+
+      // Append "對我的設定" section to USER.md if not already present
+      if (fs.existsSync(userMdPath)) {
+        let userMd = fs.readFileSync(userMdPath, 'utf-8');
+        if (!userMd.includes('對我的設定')) {
+          const section = `\n## 對我的設定\n\n- **叫我什麼名字：** ${aiName || '_(not set)_'}\n- **Emoji：** ${aiEmoji || '_(not set)_'}\n`;
+          userMd += section;
+          fs.writeFileSync(userMdPath, userMd);
+        }
+      }
+
+      // Delete IDENTITY.md
+      fs.unlinkSync(identityPath);
+      log.info(`Workspace ${wsId}: IDENTITY.md merged into USER.md and deleted`);
+    }
+
+    // 2. Replace SOUL.md with new personal soul template
+    const newSoulTemplate = path.join(TEMPLATE_DIR, 'SOUL.md');
+    if (fs.existsSync(newSoulTemplate)) {
+      fs.copyFileSync(newSoulTemplate, soulPath);
+      log.info(`Workspace ${wsId}: SOUL.md replaced with new personal soul template`);
+    }
+
+    // 3. Write CLAUDE.md.new for AI to self-merge
+    const newClaudeMdTemplate = path.join(TEMPLATE_DIR, 'CLAUDE.md');
+    if (fs.existsSync(newClaudeMdTemplate) && fs.existsSync(claudeMdPath)) {
+      const newContent = fs.readFileSync(newClaudeMdTemplate, 'utf-8');
+      fs.writeFileSync(path.join(wsDir, 'CLAUDE.md.new'), newContent);
+
+      // Prepend merge notice to existing CLAUDE.md
+      const existing = fs.readFileSync(claudeMdPath, 'utf-8');
+      const notice = '> **⚠️ 系統升級通知：** 有新版操作手冊 `CLAUDE.md.new`。請讀取它，將有用的新段落整合到這份文件中，然後刪除 `CLAUDE.md.new`。\n\n';
+      if (!existing.includes('CLAUDE.md.new')) {
+        fs.writeFileSync(claudeMdPath, notice + existing);
+      }
+      log.info(`Workspace ${wsId}: CLAUDE.md.new written for AI self-merge`);
+    }
+
+    // 4. Clean up BOOTSTRAP.md if onboarding is done
+    if (fs.existsSync(bootstrapPath) && !this._needsOnboarding(wsDir)) {
+      fs.unlinkSync(bootstrapPath);
+      log.info(`Workspace ${wsId}: stale BOOTSTRAP.md removed`);
+    }
+
+    // 5. Notify user
+    const lang = this._detectLanguage(wsDir);
+    let message;
+    if (lang === 'zh') {
+      message = `系統升級完成 (v1.1.0)：\n- 新增共同靈魂系統，AI 夥伴有了更清晰的核心價值觀\n- IDENTITY.md 已合併到 USER.md 和 SOUL.md\n- 操作手冊有更新，下次對話時會自動整合`;
+    } else {
+      message = `System upgrade complete (v1.1.0):\n- New shared soul system with clearer core values\n- IDENTITY.md merged into USER.md and SOUL.md\n- Operations manual updated, will be auto-merged on next conversation`;
+    }
+    if (aiName && !aiName.includes('not set')) {
+      message += lang === 'zh' ? `\n\n— ${aiName}` : `\n\n— ${aiName}`;
+    }
+
+    try {
+      await notifyAllBindings(wsDir, { id: 'system-upgrade', name: 'System upgrade' }, message, null);
+    } catch (err) {
+      log.warn(`Migration notification failed for ${wsId}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Detect user's preferred language from USER.md.
+   */
+  _detectLanguage(wsDir) {
+    try {
+      const userMd = fs.readFileSync(path.join(wsDir, USER_MD_FILE), 'utf-8');
+      // Check for Chinese characters or explicit language setting
+      if (/Language:.*中文|Language:.*zh|Language:.*Chinese/i.test(userMd)) return 'zh';
+      if (/[\u4e00-\u9fff]/.test(userMd)) return 'zh';
+      return 'en';
+    } catch {
+      return 'en';
+    }
+  }
+
   start() {
+    // Run workspace migrations before starting
+    this._migrateWorkspaces().catch(err => {
+      log.error(`Workspace migration error: ${err.message}`);
+    });
+
     // Initial scan: build time buckets for all user jobs
     this._rebuildAllBuckets();
     this.lastScanTime = Date.now();
@@ -558,7 +690,6 @@ class UserJobScheduler {
     const jobWithContext = {
       ...job,
       _talkHistory: talkHistory,
-      _conversationPolicy: this._conversationPolicy,
       notify: { when: 'not_match', match: '_SKIP' },
     };
 
@@ -685,11 +816,18 @@ class UserJobScheduler {
     if (this.tickCount % EVENT_SCAN_INTERVAL === 0) {
       await this._scanEventTriggers();
 
-      // Expire old engagement pending entries
+      // Expire old engagement pending entries + cleanup stale BOOTSTRAP.md
       try {
         const wsDirs = this._getAllWorkspaceDirs();
         for (const { wsDir } of wsDirs) {
           engagement.expirePending(wsDir);
+
+          // Clean up BOOTSTRAP.md if onboarding is already done
+          const bootstrapPath = path.join(wsDir, 'BOOTSTRAP.md');
+          if (fs.existsSync(bootstrapPath) && !this._needsOnboarding(wsDir)) {
+            fs.unlinkSync(bootstrapPath);
+            log.info(`Cleaned up stale BOOTSTRAP.md in ${path.basename(wsDir)}`);
+          }
         }
       } catch (err) {
         log.debug(`Engagement expiry error: ${err.message}`);

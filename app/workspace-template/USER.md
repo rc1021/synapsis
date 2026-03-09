@@ -1,4 +1,4 @@
-# USER.md - About Your Human
+# USER.md - 關於你的人類
 
 - **Name:** _(not set)_
 - **What to call them:** _(not set)_
@@ -7,6 +7,11 @@
 - **Timezone:** _(not set)_
 - **Interests:** _(not set)_
 - **Notes:** _(first setup)_
+
+## 對我的設定
+
+- **叫我什麼名字：** _(not set)_
+- **Emoji：** _(not set)_
 
 ## Context
 

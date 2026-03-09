@@ -8,6 +8,7 @@
  *
  * Used by all bridges (Discord, Telegram, WhatsApp, etc.)
  */
+const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('./logger');
 const log = createLogger('runner', {
@@ -17,6 +18,14 @@ const { BASE_RULES } = require('./system-prompt');
 const wm = require('./workspace-manager');
 const securityMonitor = require('./security-monitor');
 const registry = require('./providers/registry');
+
+const SHARED_SOUL_PATH = path.join(__dirname, '..', '..', 'SOUL.md');
+let _sharedSoul = '';
+try {
+  _sharedSoul = fs.readFileSync(SHARED_SOUL_PATH, 'utf-8');
+} catch (err) {
+  log.warn(`Failed to load shared SOUL.md: ${err.message}`);
+}
 
 const MAX_CONCURRENCY = parseInt(process.env.MAX_CONCURRENCY || '3', 10);
 const CLAUDE_IDLE_TIMEOUT = parseInt(process.env.CLAUDE_IDLE_TIMEOUT || '300000', 10);
@@ -88,6 +97,10 @@ async function executeJob(job) {
  */
 function buildSystemPrompt(channelRules, isResume) {
   const parts = [...(channelRules || []), ...BASE_RULES];
+
+  if (_sharedSoul) {
+    parts.push(_sharedSoul);
+  }
 
   const syncPrompt = wm.readSyncPrompt();
   if (syncPrompt) {

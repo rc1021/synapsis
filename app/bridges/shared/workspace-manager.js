@@ -145,8 +145,10 @@ function createWorkspace(bridge, userId) {
   execSync(`cp -r "${TEMPLATE_DIR}/"* "${abs}/"`);
 
   // Create profile
+  const appPkg = require('../../package.json');
   const profile = {
     createdAt: new Date().toISOString(),
+    templateVersion: appPkg.version,
     bindings: [`${bridge}:${userId}`],
   };
   writeProfile(abs, profile);

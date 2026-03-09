@@ -20,6 +20,7 @@ Every conversation is a synapse firing — the more we talk, the smarter we both
 ```
 app/
 ├── src/index.js              # Entry point — orchestrates all channels
+├── SOUL.md                   # Shared soul — core values injected into all system prompts
 ├── bridges/
 │   ├── shared/               # Shared modules
 │   │   ├── providers/        # AI provider abstraction layer
@@ -31,11 +32,19 @@ app/
 │   │   ├── claude-spawner.js # Backward-compat shim → delegates to claude-cli provider
 │   │   ├── logger.js         # Logger factory
 │   │   ├── system-prompt.js  # BASE_RULES shared across all channels
+│   │   ├── engagement.js     # Engagement tracking (pending → match → score)
 │   │   └── security-monitor.js # Tool call violation detector
 │   └── discord/src/          # Discord bridge (index, claude-runner, session-store, message-splitter)
 ├── scheduler/
-│   ├── src/                  # Cron scheduler (index, job-runner, state-manager, notifier)
-│   └── jobs.json             # Job definitions (cron schedule + config)
+│   ├── src/                  # Cron scheduler (index, job-runner, user-job-scheduler, state-manager, notifier)
+│   ├── jobs.json             # System job definitions (cron schedule + config)
+│   └── common-jobs.json      # Per-workspace event job templates (adaptive companion)
+├── workspace-template/       # Template for new workspaces
+│   ├── CLAUDE.md             # Operations manual (session startup, memory rules, self-update)
+│   ├── SOUL.md               # Personal soul (AI's evolving identity per user)
+│   ├── USER.md               # User profile + preferences (includes AI naming)
+│   ├── BOOTSTRAP.md          # First-conversation onboarding (deleted after use)
+│   └── MEMORY.md             # Long-term memory template
 ├── .env                      # Environment config (tokens, paths, limits)
 ├── ctl.sh                    # Service control (install/start/stop/restart/status/logs)
 └── logs/                     # Auto-rotated log files
@@ -73,9 +82,11 @@ Service management:
 - **Provider abstraction:** `bridges/shared/providers/` — each provider implements `run()` (simple) and `runStream()` (streaming EventEmitter). Registry resolves provider by `AI_PROVIDER` env var.
 - **Channel interface:** Each bridge exports `{ name, start, cleanup }`. Bridge-specific rules (e.g. `DISCORD_RULES`) are passed to the shared runner.
 - **Shared runner:** `bridges/shared/runner.js` — per-workspace serialized concurrency queue, idle/hard-cap timeout, security monitoring, progress callbacks. Used by all bridges.
+- **Soul system:** Two-layer identity — `app/SOUL.md` (shared, injected via system prompt, immutable by AI) + per-workspace `SOUL.md` (personal, AI evolves it). Shared soul contains core values + conversation philosophy.
 - **Session management:** Per-user/thread sessions with TTL, token tracking, auto-compaction at 80K tokens
 - **Concurrency:** Per-workspace serialization + global concurrency gate (`MAX_CONCURRENCY`)
 - **Security:** Workspace isolation (sandbox-exec on macOS, firejail on Linux), token/secret sanitization, security-monitor for tool call violations, prompt injection prevention via `BASE_RULES`
+- **Engagement tracking:** `bridges/shared/engagement.js` — tracks DM delivery → user reply → engagement scoring (high/medium/low/none). Used by self-tune job to adjust interaction frequency.
 
 ## Coding conventions
 
@@ -93,20 +104,38 @@ Service management:
 2. Register in `providers/registry.js`: `register('xxx', () => new XxxProvider())`
 3. Set `AI_PROVIDER=xxx` in `.env`
 
+## Workspace identity system
+
+Three-layer architecture:
+
+| Layer | File | Who writes | Who reads | Mutable by AI |
+|-------|------|-----------|-----------|---------------|
+| Shared soul | `app/SOUL.md` | Project owner | System prompt injection | No |
+| Personal soul | `workspace/SOUL.md` | AI | AI (session startup) | Yes |
+| User profile | `workspace/USER.md` | User (via onboarding) | AI (session startup) | Partially (AI updates facts) |
+| Operations | `workspace/CLAUDE.md` | Template + AI self-update | AI (session startup) | Yes |
+
+- Shared soul defines core values and conversation philosophy — applies to ALL workspaces
+- Personal soul is the AI's evolving identity with each specific user
+- CLAUDE.md is a living operations manual — AI updates it as it learns new patterns
+
 ## Scheduler jobs
 
+### System jobs
 Defined in `app/scheduler/jobs.json`. Three types:
 - `shell` — runs a bash command (supports `{{TIMESTAMP}}` template)
 - `ai` — runs an AI prompt with model/tools/budget config (provider determined by `AI_PROVIDER`)
 - `claude` — legacy alias for `ai` (backward compatible)
 
-Job config uses `job.ai` key (or legacy `job.claude` key as fallback).
+### Per-workspace event jobs
+Defined in `app/scheduler/common-jobs.json`. Triggered by conditions (talk-history volume, idle days, proactive intervals, callbacks, spaced-review). Tier system: `quick` (Haiku), `standard` (Sonnet), `deep` (Opus).
 
-Features: cron schedule, quiet hours, one-time jobs, Discord notifications, hot reload (auto-detects changes every 5s).
+Features: cron schedule, quiet hours, one-time jobs, Discord notifications, hot reload, engagement tracking, self-tuning via preferences.json.
 
 ## Important notes
 
 - Each user has their own workspace under `app/workspaces/data/` — bot code should not modify workspaces directly
-- Each workspace has its own `CLAUDE.md` with agent-specific instructions (identity, memory, safety rules)
+- Each workspace has its own `CLAUDE.md` (operations) + `SOUL.md` (identity) — both are living documents the AI maintains
 - `SPEC.md` at repo root contains the spec for adding Telegram/WhatsApp bridges
+- `ADAPTIVE-COMPANION-SPEC.md` at repo root contains the adaptive companion evolution spec
 - No test suite currently exists
