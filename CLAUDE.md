@@ -34,9 +34,11 @@ app/
 │   │   ├── system-prompt.js  # BASE_RULES shared across all channels
 │   │   ├── engagement.js     # Engagement tracking (pending → match → score)
 │   │   └── security-monitor.js # Tool call violation detector
-│   └── discord/src/          # Discord bridge (index, claude-runner, session-store, message-splitter)
+│   ├── discord/src/          # Discord bridge (index, claude-runner, session-store, message-splitter)
+│   └── web/src/              # Web dashboard bridge (file browser, auth, static SPA)
 ├── scheduler/
 │   ├── src/                  # Cron scheduler (index, job-runner, user-job-scheduler, state-manager, notifier)
+│   ├── migrations/           # Versioned workspace migration scripts (1.1.0.js, 1.2.0.js, ...)
 │   ├── jobs.json             # System job definitions (cron schedule + config)
 │   └── common-jobs.json      # Per-workspace event job templates (adaptive companion)
 ├── workspace-template/       # Template for new workspaces
@@ -76,6 +78,9 @@ Service management:
 - `CLAUDE_TIMEOUT` — Hard timeout in ms (default: 300000)
 - `AI_PROVIDER` — AI backend: `claude-api` (default) | `claude-cli` (personal/dev only)
 - `ANTHROPIC_API_KEY` — Required for default `claude-api` provider
+- `WEB_PORT` — Web dashboard port (set to enable, e.g. `3001`)
+- `WEB_PUBLIC_URL` — Full public URL for ngrok/tunnel (e.g. `https://xxx.ngrok-free.app`)
+- `NGROK_DOMAIN` — ngrok domain for auto-managed tunnel via `ctl.sh`
 
 ## Architecture patterns
 
@@ -87,6 +92,8 @@ Service management:
 - **Concurrency:** Per-workspace serialization + global concurrency gate (`MAX_CONCURRENCY`)
 - **Security:** Workspace isolation (sandbox-exec on macOS, firejail on Linux), token/secret sanitization, security-monitor for tool call violations, prompt injection prevention via `BASE_RULES`
 - **Engagement tracking:** `bridges/shared/engagement.js` — tracks DM delivery → user reply → engagement scoring (high/medium/low/none). Used by self-tune job to adjust interaction frequency.
+- **Web dashboard:** `bridges/web/` — lightweight HTTP server (Node.js built-in `http`, zero dependencies) for workspace file browsing/upload/download. Auth: one-time token → session cookie. AI outputs `[REQUEST_WEB_ACCESS]` marker → bridge replaces with tokenized URL. Bot/crawler requests ignored to prevent Discord link preview from consuming tokens.
+- **Migration system:** `scheduler/migrations/` — file-based migration chain. Each version gets `X.Y.Z.js` exporting `migrate(ctx)`. Runner auto-discovers and executes pending migrations in semver order at startup. Bump `package.json` version to trigger.
 
 ## Coding conventions
 
@@ -142,10 +149,20 @@ Defined in `app/scheduler/common-jobs.json`. Triggered by conditions (talk-histo
 
 Features: cron schedule, quiet hours, one-time jobs, Discord notifications, hot reload, engagement tracking, self-tuning via preferences.json.
 
+## Adding a workspace migration
+
+1. Create `scheduler/migrations/X.Y.Z.js` — export `function migrate(ctx)` (can be async)
+2. `ctx` contains: `{ wsId, wsDir, profile, log, wm, templateDir, notifyAllBindings }`
+3. Bump `package.json` version to `X.Y.Z`
+4. Runner executes all pending migrations in order at startup
+
 ## Important notes
 
 - Each user has their own workspace under `app/workspaces/data/` — bot code should not modify workspaces directly
 - Each workspace has its own `CLAUDE.md` (operations) + `SOUL.md` (identity) — both are living documents the AI maintains
+- Workspace template changes require a new migration + version bump to reach existing users
+- `ctl.sh` auto-manages ngrok tunnel when `NGROK_DOMAIN` is set in `.env`
 - `SPEC.md` at repo root contains the spec for adding Telegram/WhatsApp bridges
 - `ADAPTIVE-COMPANION-SPEC.md` at repo root contains the adaptive companion evolution spec
+- `WEB-DASHBOARD-SPEC.md` at repo root contains the web dashboard design spec
 - No test suite currently exists
