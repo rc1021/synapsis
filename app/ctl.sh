@@ -13,10 +13,64 @@ TEMPLATE="$SCRIPT_DIR/$LABEL.plist.template"
 GENERATED="$SCRIPT_DIR/$LABEL.plist"
 DEST_PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 GUI="gui/$(id -u)"
+NGROK_PID_FILE="$SCRIPT_DIR/logs/ngrok.pid"
 
 step() { printf "\r\033[K⏳ %s..." "$1"; }
 ok() { printf "\r\033[K✅ %s\n" "$1"; }
 fail() { printf "\r\033[K❌ %s\n" "$1"; exit 1; }
+
+# --- ngrok ---
+
+load_env_var() {
+  local key="$1"
+  local env_file="$SCRIPT_DIR/.env"
+  [ -f "$env_file" ] || return 1
+  grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2-
+}
+
+ngrok_start() {
+  local domain web_port
+  domain="$(load_env_var NGROK_DOMAIN)"
+  [ -z "$domain" ] && return 0  # not configured, skip silently
+
+  web_port="$(load_env_var WEB_PORT)"
+  [ -z "$web_port" ] && web_port=3001
+
+  # Check if already running
+  if [ -f "$NGROK_PID_FILE" ] && kill -0 "$(cat "$NGROK_PID_FILE")" 2>/dev/null; then
+    ok "ngrok already running (pid $(cat "$NGROK_PID_FILE"))"
+    return 0
+  fi
+
+  command -v ngrok &>/dev/null || fail "ngrok not found — install with: brew install ngrok"
+
+  step "starting ngrok tunnel ($domain)"
+  nohup ngrok http --domain="$domain" "$web_port" \
+    --log="$SCRIPT_DIR/logs/ngrok.log" --log-format=logfmt \
+    &>/dev/null &
+  echo $! > "$NGROK_PID_FILE"
+  sleep 1
+
+  if kill -0 "$(cat "$NGROK_PID_FILE")" 2>/dev/null; then
+    ok "ngrok started (pid $(cat "$NGROK_PID_FILE"), https://$domain)"
+  else
+    rm -f "$NGROK_PID_FILE"
+    fail "ngrok failed to start — check logs/ngrok.log"
+  fi
+}
+
+ngrok_stop() {
+  if [ -f "$NGROK_PID_FILE" ]; then
+    local pid
+    pid="$(cat "$NGROK_PID_FILE")"
+    if kill -0 "$pid" 2>/dev/null; then
+      step "stopping ngrok"
+      kill "$pid" 2>/dev/null || true
+      ok "ngrok stopped"
+    fi
+    rm -f "$NGROK_PID_FILE"
+  fi
+}
 
 get_pid() {
   launchctl list "$LABEL" 2>/dev/null | awk -F'"PID" = ' 'NF>1{gsub(/[^0-9]/,"",$2); print $2}'
@@ -67,6 +121,7 @@ do_install() {
   step "starting service"
   sleep 1
   launchctl bootstrap "$GUI" "$DEST_PLIST" && ok "installed & started" || fail "bootstrap failed"
+  ngrok_start
 }
 
 case "${1:-status}" in
@@ -79,6 +134,7 @@ case "${1:-status}" in
     read -r ans
     [ "$ans" = "y" ] || [ "$ans" = "Y" ] || exit 0
 
+    ngrok_stop
     step "stopping service"
     launchctl bootout "$GUI/$LABEL" 2>/dev/null || true
 
@@ -111,26 +167,38 @@ case "${1:-status}" in
   start)
     step "starting service"
     launchctl bootstrap "$GUI" "$DEST_PLIST" 2>/dev/null && ok "started" || fail "already running or failed"
+    ngrok_start
     ;;
   stop)
     check_running_jobs
+    ngrok_stop
     step "stopping service"
     launchctl bootout "$GUI/$LABEL" 2>/dev/null && ok "stopped" || fail "not running"
     ;;
   restart)
     check_running_jobs
+    ngrok_stop
     step "stopping service"
     launchctl bootout "$GUI/$LABEL" 2>/dev/null || true
     step "starting service"
     sleep 1
     launchctl bootstrap "$GUI" "$DEST_PLIST" && ok "restarted" || fail "bootstrap failed"
+    ngrok_start
     ;;
   status)
     if launchctl list "$LABEL" &>/dev/null; then
       PID=$(get_pid)
-      echo "✅ running (pid ${PID:-?})"
+      echo "✅ synapsis running (pid ${PID:-?})"
     else
-      echo "⏹  not running"
+      echo "⏹  synapsis not running"
+    fi
+    if [ -f "$NGROK_PID_FILE" ] && kill -0 "$(cat "$NGROK_PID_FILE")" 2>/dev/null; then
+      echo "✅ ngrok running (pid $(cat "$NGROK_PID_FILE"))"
+    else
+      domain="$(load_env_var NGROK_DOMAIN 2>/dev/null)"
+      if [ -n "$domain" ]; then
+        echo "⏹  ngrok not running"
+      fi
     fi
     ;;
   log|logs)
