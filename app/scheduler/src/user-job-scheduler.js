@@ -206,7 +206,14 @@ class UserJobScheduler {
       log.info(`Workspace ${wsId}: stale BOOTSTRAP.md removed`);
     }
 
-    // 5. Notify user
+    // 5. Clear session store to force new sessions with updated prompts
+    const sessionFile = wm.sessionStorePath(wsDir);
+    if (fs.existsSync(sessionFile)) {
+      fs.unlinkSync(sessionFile);
+      log.info(`Workspace ${wsId}: session store cleared (force reload)`);
+    }
+
+    // 6. Notify user
     const lang = this._detectLanguage(wsDir);
     let message;
     if (lang === 'zh') {
