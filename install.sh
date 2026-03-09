@@ -165,6 +165,7 @@ require_cmd node node "https://nodejs.org"
 require_cmd npm npm "https://nodejs.org"
 require_cmd curl curl "https://curl.se"
 require_cmd python3 python3 "https://www.python.org"
+require_cmd ffmpeg ffmpeg "https://ffmpeg.org"
 require_cmd yt-dlp yt-dlp "https://github.com/yt-dlp/yt-dlp"
 
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
