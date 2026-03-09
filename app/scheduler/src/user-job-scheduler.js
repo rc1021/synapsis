@@ -153,17 +153,23 @@ class UserJobScheduler {
     const claudeMdPath = path.join(wsDir, 'CLAUDE.md');
     const bootstrapPath = path.join(wsDir, 'BOOTSTRAP.md');
 
-    // 1. Extract Name/Emoji from IDENTITY.md → USER.md
+    // 1. Extract fields from IDENTITY.md
     let aiName = '';
     let aiEmoji = '';
+    let aiCreature = '';
+    let aiVibe = '';
     if (fs.existsSync(identityPath)) {
       const identity = fs.readFileSync(identityPath, 'utf-8');
       const nameMatch = identity.match(/\*\*Name:\*\*\s*(.+)/);
       const emojiMatch = identity.match(/\*\*Emoji:\*\*\s*(.+)/);
+      const creatureMatch = identity.match(/\*\*Creature:\*\*\s*(.+)/);
+      const vibeMatch = identity.match(/\*\*Vibe:\*\*\s*(.+)/);
       if (nameMatch) aiName = nameMatch[1].trim();
       if (emojiMatch) aiEmoji = emojiMatch[1].trim();
+      if (creatureMatch) aiCreature = creatureMatch[1].trim();
+      if (vibeMatch) aiVibe = vibeMatch[1].trim();
 
-      // Append "對我的設定" section to USER.md if not already present
+      // Name/Emoji → USER.md "對我的設定"
       if (fs.existsSync(userMdPath)) {
         let userMd = fs.readFileSync(userMdPath, 'utf-8');
         if (!userMd.includes('對我的設定')) {
@@ -178,11 +184,40 @@ class UserJobScheduler {
       log.info(`Workspace ${wsId}: IDENTITY.md merged into USER.md and deleted`);
     }
 
-    // 2. Replace SOUL.md with new personal soul template
+    // 2. SOUL.md — write .new with Creature/Vibe injected, keep old content for AI merge
     const newSoulTemplate = path.join(TEMPLATE_DIR, 'SOUL.md');
     if (fs.existsSync(newSoulTemplate)) {
-      fs.copyFileSync(newSoulTemplate, soulPath);
-      log.info(`Workspace ${wsId}: SOUL.md replaced with new personal soul template`);
+      let newSoul = fs.readFileSync(newSoulTemplate, 'utf-8');
+
+      // Inject Creature/Vibe from IDENTITY.md into template
+      if (aiCreature && !aiCreature.includes('not set')) {
+        newSoul = newSoul.replace(
+          /- \*\*形象：\*\*\s*.+/,
+          `- **形象：** ${aiCreature}`
+        );
+      }
+      if (aiVibe && !aiVibe.includes('not set')) {
+        newSoul = newSoul.replace(
+          /- \*\*語氣：\*\*\s*.+/,
+          `- **語氣：** ${aiVibe}`
+        );
+      }
+
+      // Write as SOUL.md.new for AI to merge with existing evolved soul
+      fs.writeFileSync(path.join(wsDir, 'SOUL.md.new'), newSoul);
+
+      // Prepend merge notice to existing SOUL.md
+      if (fs.existsSync(soulPath)) {
+        const existingSoul = fs.readFileSync(soulPath, 'utf-8');
+        const notice = '> **⚠️ 系統升級通知：** 有新版個人靈魂模板 `SOUL.md.new`。請讀取它，將新的結構整合到這份文件中（保留你已演化的內容），然後刪除 `SOUL.md.new`。\n\n';
+        if (!existingSoul.includes('SOUL.md.new')) {
+          fs.writeFileSync(soulPath, notice + existingSoul);
+        }
+      } else {
+        // No existing SOUL.md — just use the new one directly
+        fs.renameSync(path.join(wsDir, 'SOUL.md.new'), soulPath);
+      }
+      log.info(`Workspace ${wsId}: SOUL.md.new written for AI self-merge`);
     }
 
     // 3. Write CLAUDE.md.new for AI to self-merge
