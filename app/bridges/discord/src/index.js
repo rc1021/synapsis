@@ -627,6 +627,26 @@ function setupEventHandlers() {
 
         if (summary) {
           fullPrompt = `[Context from previous conversation: ${summary}]\n\n${fullPrompt}`;
+        } else {
+          // Fallback: inject recent talk-history so new session has some context
+          const talkHistoryPath = join(wsPath, 'talk-history.jsonl');
+          try {
+            if (fs.existsSync(talkHistoryPath)) {
+              const lines = fs.readFileSync(talkHistoryPath, 'utf-8').trim().split('\n');
+              const recent = lines.slice(-5).map(l => {
+                try {
+                  const { u, a } = JSON.parse(l);
+                  return `User: ${u}\nAssistant: ${a}`;
+                } catch { return null; }
+              }).filter(Boolean).join('\n\n');
+              if (recent) {
+                fullPrompt = `[Recent conversation history (session was rotated):\n${recent}]\n\n${fullPrompt}`;
+                log.info(`Compact fallback: injected ${lines.slice(-5).length} talk-history entries`);
+              }
+            }
+          } catch (err) {
+            log.warn(`Compact fallback failed: ${err.message}`);
+          }
         }
       } else {
         const existingSession = sessions.get(key);
