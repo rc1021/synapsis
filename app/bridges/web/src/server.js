@@ -117,10 +117,25 @@ function readBody(req, maxSize) {
 
 // --- Route handlers ---
 
+// Bot/crawler user-agent patterns (Discord, Slack, Telegram, Twitter, etc.)
+const BOT_UA_PATTERN = /bot|crawler|spider|preview|fetch|curl|wget|facebookexternalhit|twitterbot|slackbot|discordbot|telegrambot|whatsapp|embedly|quora|pinterest|redditbot|applebot/i;
+
+function isBotRequest(req) {
+  const ua = req.headers['user-agent'] || '';
+  return BOT_UA_PATTERN.test(ua);
+}
+
 function handleDash(req, res, params) {
   const token = params.get('t');
   if (!token) {
     send(res, 400, { error: 'Missing token' });
+    return;
+  }
+
+  // Ignore bot/crawler requests (e.g. Discord link preview) — don't consume the token
+  if (isBotRequest(req)) {
+    log.info(`Bot request ignored for /dash (UA: ${(req.headers['user-agent'] || '').slice(0, 80)})`);
+    send(res, 200, '<html><head><meta property="og:title" content="Synapsis Dashboard"><meta property="og:description" content="Open this link to access your workspace."></head><body></body></html>', 'text/html; charset=utf-8');
     return;
   }
 
