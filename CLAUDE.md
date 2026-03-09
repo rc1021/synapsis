@@ -149,6 +149,22 @@ Defined in `app/scheduler/common-jobs.json`. Triggered by conditions (talk-histo
 
 Features: cron schedule, quiet hours, one-time jobs, Discord notifications, hot reload, engagement tracking, self-tuning via preferences.json.
 
+## Slash commands
+
+Defined in `bridges/shared/command-handler.js`, registered as Discord slash commands in `bridges/discord/src/index.js`.
+
+| Command | Description |
+|---------|-------------|
+| `/new` `/reset` | Start a new conversation (clear session) |
+| `/dashboard` | Open web file manager (returns tokenized URL) |
+| `/todo` | List workspace TODO.md |
+| `/todo <item>` | Add a todo item |
+| `/connection <code>` | Register with an invite code |
+| `/share-code` | Generate a 24hr invite code |
+| `/bind-token` | Generate a 5-min cross-platform binding token |
+| `/bind <token>` | Bind account to an existing workspace |
+| `/help` | Show available commands |
+
 ## Adding a workspace migration
 
 1. Create `scheduler/migrations/X.Y.Z.js` — export `function migrate(ctx)` (can be async)
