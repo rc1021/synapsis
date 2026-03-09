@@ -8,6 +8,7 @@ const { parseCommand, handleCommand } = require('../../shared/command-handler');
 const wm = require('../../shared/workspace-manager');
 const { sanitizeOutput, isTextFile, TEXT_EXTENSIONS } = require('../../shared/sanitize');
 const engagement = require('../../shared/engagement');
+const webBridge = require('../../web/src/index');
 const log = require('./logger');
 
 const MAX_INPUT = 8000;
@@ -623,7 +624,19 @@ function setupEventHandlers() {
         sessions.updateTokens(key, result.inputTokens);
       }
 
-      const responseText = result.text || '';
+      let responseText = result.text || '';
+
+      // Replace web access marker with actual URL
+      const WEB_MARKER = '[REQUEST_WEB_ACCESS]';
+      if (responseText.includes(WEB_MARKER)) {
+        const wsRel = wm.readIndex('discord', userId);
+        if (wsRel) {
+          const url = webBridge.generateAccessUrl(wsRel);
+          responseText = responseText.replace(WEB_MARKER, url);
+        } else {
+          responseText = responseText.replace(WEB_MARKER, '(web dashboard unavailable)');
+        }
+      }
 
       // Append to talk-history for seed-watering trigger
       wm.appendTalkHistory(wsPath, prompt, responseText);

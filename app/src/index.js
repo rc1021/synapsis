@@ -6,6 +6,7 @@ const { registerBridge } = require('../scheduler/src/notifier');
 const securityMonitor = require('../bridges/shared/security-monitor');
 
 const channels = [
+  require('../bridges/web/src/index'),
   require('../scheduler/src/index'),
   require('../bridges/discord/src/index'),
   // require('../bridges/telegram/src/index'),  // future
