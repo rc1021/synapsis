@@ -194,6 +194,35 @@ const slashCommands = [
       ja: '利用可能なコマンドを表示',
       ko: '사용 가능한 명령어 표시',
     }),
+  new SlashCommandBuilder()
+    .setName('yt')
+    .setDescription('Fetch YouTube transcript and analyze')
+    .setDescriptionLocalizations({
+      'zh-TW': '取得 YouTube 逐字稿並分析',
+      'zh-CN': '获取 YouTube 逐字稿并分析',
+      ja: 'YouTube の文字起こしを取得して分析',
+      ko: 'YouTube 자막을 가져와 분석',
+    })
+    .addStringOption(opt => opt
+      .setName('video')
+      .setDescription('YouTube URL or Video ID')
+      .setDescriptionLocalizations({
+        'zh-TW': 'YouTube 網址或影片 ID',
+        'zh-CN': 'YouTube 网址或视频 ID',
+        ja: 'YouTube URL または動画 ID',
+        ko: 'YouTube URL 또는 동영상 ID',
+      })
+      .setRequired(false))
+    .addBooleanOption(opt => opt
+      .setName('verify')
+      .setDescription('Verify & explore content (fact-check + notes)')
+      .setDescriptionLocalizations({
+        'zh-TW': '驗證且探索內容（事實查核 + 筆記）',
+        'zh-CN': '验证并探索内容（事实核查 + 笔记）',
+        ja: 'コンテンツを検証・探索（ファクトチェック + ノート）',
+        ko: '콘텐츠 검증 및 탐색 (팩트체크 + 노트)',
+      })
+      .setRequired(false)),
 ];
 
 async function fetchReferencedContent(message) {
@@ -284,7 +313,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /dashboard, /todo, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /dashboard, /todo, /yt, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }
@@ -297,6 +326,189 @@ function setupEventHandlers() {
     const bridge = 'discord';
     const userId = interaction.user.id;
     const commandName = interaction.commandName;
+
+    // --- /yt: async handler (deferReply → transcript → AI) ---
+    if (commandName === 'yt') {
+      const video = interaction.options.getString('video');
+      const verify = interaction.options.getBoolean('verify') || false;
+
+      // Help: no video arg
+      if (!video) {
+        const helpLines = [
+          '**`/yt` — YouTube 逐字稿分析**',
+          '',
+          '用法:',
+          '`/yt video:<YouTube URL 或 Video ID>` — 下載逐字稿 + AI 摘要',
+          '`/yt video:<URL> verify:true` — 下載逐字稿 + 驗證探索 + 筆記',
+          '',
+          '流程:',
+          '1. 嘗試下載 YouTube 字幕',
+          '2. 無字幕時自動改用 Whisper 語音轉文字',
+          '3. AI 分析逐字稿並回覆摘要',
+          '4. （verify 模式）事實查核 + 領域探索 + 整理筆記',
+        ];
+        await interaction.reply({ content: helpLines.join('\n'), ephemeral: true });
+        return;
+      }
+
+      // Must be registered
+      const wsPath = wm.resolveWorkspace(bridge, userId);
+      if (!wsPath) {
+        await interaction.reply({ content: '你尚未註冊，請先使用 `/connection <邀請碼>` 註冊。', ephemeral: true });
+        return;
+      }
+
+      await interaction.deferReply();
+
+      try {
+        // Step 1: Run yt-transcript.py
+        const uploadsDir = join(wsPath, 'uploads');
+        fs.mkdirSync(uploadsDir, { recursive: true });
+
+        const toolsDir = resolve(__dirname, '..', '..', '..', 'tools');
+        const scriptPath = join(toolsDir, 'yt-transcript.py');
+        const langArg = process.env.YT_DEFAULT_LANG || 'zh';
+
+        log.info(`/yt from ${interaction.user.tag}: video=${video} verify=${verify}`);
+
+        const proc = await new Promise((resolveProc, rejectProc) => {
+          const child = require('child_process').spawn(
+            'python3', [scriptPath, video, '--lang', langArg, '--output', uploadsDir],
+            { timeout: 1200000 }, // 20 min max (Whisper can be slow)
+          );
+          let stdout = '';
+          let stderr = '';
+          child.stdout.on('data', (d) => { stdout += d; });
+          child.stderr.on('data', (d) => { stderr += d; });
+          child.on('close', (code) => {
+            if (code === 0) resolveProc({ stdout: stdout.trim(), stderr: stderr.trim() });
+            else rejectProc(new Error(stderr.trim() || `yt-transcript.py exited with code ${code}`));
+          });
+          child.on('error', rejectProc);
+        });
+
+        const savedFilePath = proc.stdout; // yt-transcript.py prints the file path when --output is used
+        if (!savedFilePath || !fs.existsSync(savedFilePath)) {
+          await interaction.editReply('逐字稿下載失敗：找不到輸出檔案。');
+          return;
+        }
+
+        const fileName = require('path').basename(savedFilePath);
+        log.info(`/yt transcript saved: ${savedFilePath}`);
+        if (proc.stderr) log.debug(`/yt stderr: ${proc.stderr}`);
+
+        // Auto-cleanup after 10 minutes
+        setTimeout(() => {
+          fs.unlink(savedFilePath, (err) => {
+            if (err && err.code !== 'ENOENT') log.warn(`/yt upload cleanup failed: ${err.message}`);
+            else log.debug(`/yt upload cleaned up: ${savedFilePath}`);
+          });
+        }, 10 * 60 * 1000);
+
+        // Step 2: Build prompt for AI
+        const fileAnnotation = `[User requested YouTube transcript via /yt — file "${fileName}" saved to uploads/${fileName} -- use the Read tool to read it]`;
+
+        let aiPrompt;
+        if (verify) {
+          // Read the spec for verify-explore
+          const specPath = resolve(__dirname, '..', '..', '..', 'scheduler', 'specs', 'verify-explore-spec.md');
+          let specContent = '';
+          try {
+            specContent = fs.readFileSync(specPath, 'utf-8');
+          } catch {
+            log.warn('/yt verify: could not read verify-explore-spec.md');
+          }
+
+          aiPrompt = `[DM from ${interaction.user.username}]\n` +
+            `${fileAnnotation}\n\n` +
+            `用戶透過 /yt 指令請求「驗證且探索」這份 YouTube 逐字稿。\n\n` +
+            `請依照以下 spec 執行完整流程（內容分析 → 事實查核 → 領域邊界探索 → 整理筆記到 memory/learning/notes/conversations/），` +
+            `完成後回覆用戶整理摘要。使用 sub-agent (Agent tool) 執行。\n\n` +
+            `--- SPEC ---\n${specContent}`;
+        } else {
+          aiPrompt = `[DM from ${interaction.user.username}]\n` +
+            `${fileAnnotation}\n\n` +
+            `用戶透過 /yt 指令上傳了 YouTube 逐字稿，請閱讀並提供重點摘要。`;
+        }
+
+        // Step 3: Enqueue AI
+        const sessions = getSessionStore(wsPath);
+        const key = interaction.channel?.isDMBased()
+          ? `dm:${userId}`
+          : interaction.channel?.isThread()
+            ? `thread:${interaction.channelId}`
+            : `channel:${interaction.channelId}:${userId}`;
+
+        const existingSession = sessions.get(key);
+        const isResume = !!existingSession;
+        const sessionId = sessions.getOrCreate(key);
+
+        const result = await enqueue(aiPrompt, sessionId, isResume, null, wsPath);
+
+        if (result.inputTokens) {
+          sessions.updateTokens(key, result.inputTokens);
+        }
+
+        // Step 4: Reply with split messages
+        let responseText = result.text || '(no response)';
+
+        // Replace web access markers
+        const wsRel = wm.readIndex(bridge, userId);
+        if (wsRel) {
+          responseText = responseText.replace(/\[REQUEST_WEB_ACCESS\]/g, webBridge.generateAccessUrl(wsRel));
+          responseText = responseText.replace(/\[REQUEST_WEB_FILE:([^\]]+)\]/g, (_, filePath) => {
+            return webBridge.generateAccessUrl(wsRel, filePath.trim());
+          });
+        }
+
+        wm.appendTalkHistory(wsPath, `/yt ${video}${verify ? ' verify:true' : ''}`, responseText);
+
+        const outboxFiles = collectOutbox(wsPath);
+
+        const shortId = sessionId.slice(0, 8);
+        const fmtTokens = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+        const limit = parseInt(process.env.COMPACT_THRESHOLD || '80000', 10);
+        const pct = ((result.inputTokens / limit) * 100).toFixed(1);
+        const tokenInfo = `⛁ ${fmtTokens(result.inputTokens)} (${pct}%)`;
+        const withFooter = responseText + `\n\n-# ⎔ ${shortId} · ${tokenInfo}`;
+        const chunks = splitMessage(withFooter);
+
+        // First chunk goes as editReply (the deferred reply), rest as follow-ups
+        for (let i = 0; i < chunks.length; i++) {
+          const sanitized = sanitizeOutput(chunks[i], wsPath);
+          if (!sanitized.safe) {
+            log.warn(`[SECURITY] /yt blocked response chunk ${i}`);
+            if (i === 0) await interaction.editReply('Response blocked: contained restricted information.');
+            break;
+          }
+          const isLast = i === chunks.length - 1;
+          if (i === 0) {
+            if (isLast && outboxFiles.length) {
+              await interaction.editReply({ content: sanitized.text, files: outboxFiles });
+            } else {
+              await interaction.editReply(sanitized.text);
+            }
+          } else {
+            if (isLast && outboxFiles.length) {
+              await interaction.followUp({ content: sanitized.text, files: outboxFiles });
+            } else {
+              await interaction.followUp(sanitized.text);
+            }
+          }
+        }
+
+        log.info(`/yt complete for ${interaction.user.tag}: ${chunks.length} chunks`);
+      } catch (err) {
+        log.error(`/yt error for ${interaction.user.tag}: ${err.message}`);
+        const errMsg = `處理失敗: ${err.message.slice(0, 200)}`;
+        try {
+          await interaction.editReply(errMsg);
+        } catch {
+          await interaction.followUp(errMsg).catch(() => {});
+        }
+      }
+      return;
+    }
 
     // Build args for command handler
     const args = [];

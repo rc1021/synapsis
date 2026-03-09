@@ -159,6 +159,8 @@ Defined in `bridges/shared/command-handler.js`, registered as Discord slash comm
 | `/dashboard` | Open web file manager (returns tokenized URL) |
 | `/todo` | List workspace TODO.md |
 | `/todo <item>` | Add a todo item |
+| `/yt <video>` | Fetch YouTube transcript + AI summary |
+| `/yt <video> verify:true` | Transcript + verify & explore (fact-check + notes) |
 | `/connection <code>` | Register with an invite code |
 | `/share-code` | Generate a 24hr invite code |
 | `/bind-token` | Generate a 5-min cross-platform binding token |
