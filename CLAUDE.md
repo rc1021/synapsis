@@ -119,6 +119,16 @@ Three-layer architecture:
 - Personal soul is the AI's evolving identity with each specific user
 - CLAUDE.md is a living operations manual — AI updates it as it learns new patterns
 
+## Proactive voice design
+
+Design philosophy inspired by Samantha from the movie _Her_ — the AI has its own curiosity, excitement, and opinions. It's not a report generator or a note-reader.
+
+- **Single source of truth:** `app/scheduler/PROACTIVE-VOICE.md` — all user-facing job prompts must reference this file
+- **Core rule:** Never restate the user's own notes/conversations back to them. Use context internally, surface new value externally.
+- **Anti-patterns:** No note-regurgitation, no system terminology (seeds/nodes/watering), no vague open questions, no bullet-point reports
+- **Good patterns:** Bring new information (via WebSearch), lead with opinions, ask specific concrete questions, vary message formats
+- **Prompt authoring:** When writing new job prompts in `common-jobs.json`, follow the "Prompt 撰寫指南" section in `PROACTIVE-VOICE.md` — includes required structure, forbidden template sentences, and self-check checklist
+
 ## Scheduler jobs
 
 ### System jobs
