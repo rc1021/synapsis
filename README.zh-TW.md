@@ -204,6 +204,24 @@ app/
 
 所有任務遵守**靜默時段** — 睡眠時間不發送通知。
 
+#### 個人排程任務
+
+用戶可以請 AI 設定提醒或定期任務，AI 會寫入 workspace 的 `jobs.json`：
+
+```json
+{
+  "id": "milk-reminder",
+  "name": "免費牛奶提醒",
+  "schedule": "30 17 * * *",
+  "tier": "quick",
+  "notify": { "when": "always" },
+  "prompt": "🥛 記得去拿免費牛奶！"
+}
+```
+
+- **`notify`** — 控制輸出是否送達用戶：`always`（每次都送）、`not_match`（輸出不含指定標記時才送）、`error`（僅失敗時通知）。未設定時預設為 `always`。
+- **`once: true`** — 一次性任務，執行後自動停用。
+
 ### 靈魂演化
 
 共享靈魂（`app/SOUL.md`）不是靜態的 — 透過三個系統級任務自我演化：

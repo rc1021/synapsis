@@ -202,7 +202,18 @@ Current system AI jobs: `soul-reflection` (weekly), `soul-exploration` (twice/we
 ### Per-workspace event jobs
 Defined in `app/scheduler/common-jobs.json`. Triggered by conditions (talk-history volume, idle days, proactive intervals, callbacks, spaced-review). Tier system: `quick` (Haiku), `standard` (Sonnet), `deep` (Opus).
 
+Event trigger processing is split into two phases: non-cooldown jobs (callback, talk-history, spaced-review) run first, then cooldown-type jobs (proactive, idle-checkin, discovery) — at most one cooldown job per workspace per scan. This prevents cooldown jobs from blocking time-sensitive triggers like callbacks.
+
 Features: cron schedule, quiet hours, one-time jobs, Discord notifications, hot reload, engagement tracking, self-tuning via preferences.json.
+
+### Per-workspace cron jobs
+Defined in each workspace's `jobs.json`. User-created scheduled jobs (reminders, periodic tasks). AI creates these when users ask for reminders.
+
+Key fields:
+- `schedule` — cron expression (runs in server timezone)
+- `tier` — `quick` (Haiku) | `standard` (Sonnet) | `deep` (Opus); omit for pure-text prompts
+- `notify` — controls whether output is sent to user: `{ "when": "always" }`, `{ "when": "not_match", "match": "MARKER" }`, or `{ "when": "error" }`. Defaults to `{ "when": "always" }` if omitted.
+- `once` — if `true`, job is automatically disabled (`enabled: false`) after first execution
 
 ## Slash commands
 

@@ -204,6 +204,24 @@ Currently supported:
 
 All jobs respect **quiet hours** — no notifications during sleep.
 
+#### Per-workspace cron jobs
+
+Users can ask the AI to set reminders or scheduled tasks. The AI writes these to the workspace's `jobs.json`:
+
+```json
+{
+  "id": "milk-reminder",
+  "name": "免費牛奶提醒",
+  "schedule": "30 17 * * *",
+  "tier": "quick",
+  "notify": { "when": "always" },
+  "prompt": "🥛 記得去拿免費牛奶！"
+}
+```
+
+- **`notify`** — controls output delivery: `always` (send every time), `not_match` (send unless output contains a marker), `error` (only on failure). Defaults to `always` if omitted.
+- **`once: true`** — one-time jobs are automatically disabled after execution.
+
 ### Soul evolution
 
 The shared soul (`app/SOUL.md`) is not static — it self-evolves through three system-level jobs:
