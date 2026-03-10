@@ -919,6 +919,22 @@ class UserJobScheduler {
       log.error(`User job ${jobId} (${wsId}) failed: ${err.message}`);
     }
 
+    // One-time jobs: mark enabled=false in jobs.json after execution
+    if (job.once) {
+      try {
+        const data = JSON.parse(fs.readFileSync(jobsPath, 'utf-8'));
+        const target = (data.jobs || []).find(j => j.id === jobId);
+        if (target) {
+          target.enabled = false;
+          fs.writeFileSync(jobsPath, JSON.stringify(data, null, 2));
+          log.info(`One-time job ${jobId} (${wsId}) disabled after execution`);
+        }
+      } catch (err) {
+        log.warn(`Failed to disable one-time job ${jobId}: ${err.message}`);
+      }
+      return; // don't register next bucket
+    }
+
     const nextTime = this._getNextCronTime(job.schedule);
     if (nextTime) {
       this._writeToBucket(nextTime, wsId, jobId, job.priority || 'normal');
