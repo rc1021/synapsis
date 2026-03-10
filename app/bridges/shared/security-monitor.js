@@ -13,7 +13,10 @@
  */
 const fs = require('fs');
 const path = require('path');
-const log = require('./logger');
+const { createLogger } = require('./logger');
+const log = createLogger('security', {
+  logDir: process.env.LOG_DIR || require('path').join(__dirname, '..', '..', 'logs'),
+});
 
 // In-memory violation counters: wsPath -> { count, events[] }
 const violations = new Map();

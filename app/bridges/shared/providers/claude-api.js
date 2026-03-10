@@ -1,6 +1,11 @@
 const { BaseProvider, StreamHandle } = require('./base');
 const { buildToolDefinitions, isServerTool } = require('./tool-schemas');
 const { executeTool } = require('./tool-executors');
+const { createLogger } = require('../logger');
+const path = require('path');
+const log = createLogger('claude-api', {
+  logDir: process.env.LOG_DIR || path.join(__dirname, '..', '..', '..', 'logs'),
+});
 
 let Anthropic;
 try {
@@ -13,6 +18,28 @@ try {
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_MAX_TOKENS = 16384;
 const MAX_TOOL_TURNS = 50;
+const MAX_RETRIES = parseInt(process.env.API_MAX_RETRIES || '3', 10);
+const RETRY_BASE_DELAY_MS = 1000;
+
+/**
+ * Determine if an error is retryable (rate limit, server error, network).
+ */
+function isRetryableError(err) {
+  if (!err) return false;
+  const status = err.status || err.statusCode;
+  if (status === 429 || status === 529 || (status >= 500 && status < 600)) return true;
+  const msg = (err.message || '').toLowerCase();
+  if (msg.includes('overloaded') || msg.includes('rate') || msg.includes('timeout') || msg.includes('econnreset') || msg.includes('socket hang up')) return true;
+  return false;
+}
+
+/**
+ * Sleep for ms with jitter.
+ */
+function sleepWithJitter(baseMs, attempt) {
+  const delay = baseMs * Math.pow(2, attempt) + Math.random() * baseMs;
+  return new Promise(resolve => setTimeout(resolve, delay));
+}
 
 class ClaudeAPIProvider extends BaseProvider {
   constructor() {
@@ -96,7 +123,9 @@ class ClaudeAPIProvider extends BaseProvider {
       if (!handle._killed) {
         handle._killed = true;
         if (currentStream) {
-          try { currentStream.abort(); } catch {}
+          try { currentStream.abort(); } catch (err) {
+            log.warn(`Stream abort error: ${err.message}`);
+          }
         }
         handle.emit('close');
       }
@@ -115,12 +144,28 @@ class ClaudeAPIProvider extends BaseProvider {
       if (handle._killed) break;
 
       const params = this._buildParams(options, messages);
-      const stream = client.messages.stream(params);
-      currentStream = stream;
 
-      // Collect this turn's response
-      const turnResult = await this._streamOneTurn(stream, handle);
-      currentStream = null;
+      // Retry loop for transient API errors (429, 5xx, network)
+      let turnResult;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (handle._killed) break;
+        try {
+          const stream = client.messages.stream(params);
+          currentStream = stream;
+          turnResult = await this._streamOneTurn(stream, handle);
+          currentStream = null;
+          break; // success
+        } catch (err) {
+          currentStream = null;
+          if (attempt < MAX_RETRIES && isRetryableError(err) && !handle._killed) {
+            log.warn(`API call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${err.message}. Retrying...`);
+            await sleepWithJitter(RETRY_BASE_DELAY_MS, attempt);
+          } else {
+            throw err;
+          }
+        }
+      }
+      if (!turnResult || handle._killed) break;
 
       if (handle._killed) break;
 
@@ -278,7 +323,8 @@ class ClaudeAPIProvider extends BaseProvider {
               if (currentBlock.type === 'tool_use') {
                 try {
                   currentBlock.input = JSON.parse(currentToolInput || '{}');
-                } catch {
+                } catch (err) {
+                  log.warn(`Failed to parse tool input JSON for ${currentBlock.name}: ${err.message}`);
                   currentBlock.input = {};
                 }
                 currentToolInput = '';
@@ -309,8 +355,8 @@ class ClaudeAPIProvider extends BaseProvider {
           }
 
           resolve({ content, inputTokens, outputTokens, stopReason });
-        } catch {
-          // If finalMessage() fails, resolve with what we have
+        } catch (err) {
+          log.warn(`finalMessage() failed, resolving with accumulated data: ${err.message}`);
           resolve({ content, inputTokens, outputTokens, stopReason: 'end_turn' });
         }
       });
@@ -359,7 +405,20 @@ class ClaudeAPIProvider extends BaseProvider {
     // Mini tool loop for sub-agent (max 10 turns)
     for (let turn = 0; turn < 10; turn++) {
       params.messages = messages;
-      const response = await client.messages.create(params);
+      let response;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          response = await client.messages.create(params);
+          break;
+        } catch (err) {
+          if (attempt < MAX_RETRIES && isRetryableError(err)) {
+            log.warn(`SubAgent API call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${err.message}. Retrying...`);
+            await sleepWithJitter(RETRY_BASE_DELAY_MS, attempt);
+          } else {
+            throw err;
+          }
+        }
+      }
 
       totalInput += response.usage?.input_tokens || 0;
       totalOutput += response.usage?.output_tokens || 0;

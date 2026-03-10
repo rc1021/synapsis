@@ -15,7 +15,9 @@ function createLogger(name, { logDir, retainDays = 7 } = {}) {
     throw new Error(`createLogger('${name}'): logDir is required`);
   }
 
-  try { fs.mkdirSync(logDir, { recursive: true }); } catch {}
+  try { fs.mkdirSync(logDir, { recursive: true }); } catch (err) {
+    process.stderr.write(`[logger] Failed to create logDir ${logDir}: ${err.message}\n`);
+  }
 
   function dateStr(d) {
     const y = d.getFullYear();
@@ -43,7 +45,9 @@ function createLogger(name, { logDir, retainDays = 7 } = {}) {
           fs.unlinkSync(path.join(logDir, file));
         }
       }
-    } catch {}
+    } catch (err) {
+      process.stderr.write(`[logger] Log cleanup error: ${err.message}\n`);
+    }
   }
 
   function write(level, ...args) {
@@ -52,7 +56,9 @@ function createLogger(name, { logDir, retainDays = 7 } = {}) {
     process.stdout.write(line);
     try {
       fs.appendFileSync(logFilePath(), line);
-    } catch {}
+    } catch (err) {
+      process.stderr.write(`[logger] Failed to write log file: ${err.message}\n`);
+    }
   }
 
   cleanup();

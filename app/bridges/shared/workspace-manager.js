@@ -312,11 +312,14 @@ function listAllWorkspaces() {
           wsId: path.basename(rel),
           wsAbsPath: path.join(DATA_DIR, rel),
         });
-      } catch {}
+      } catch (err) {
+        log.warn(`Failed to parse index file ${file}: ${err.message}`);
+      }
     }
 
     return workspaces;
-  } catch {
+  } catch (err) {
+    log.warn(`Failed to list workspaces: ${err.message}`);
     return [];
   }
 }
