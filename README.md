@@ -31,9 +31,8 @@ You ←→ Discord (bridge) ←→ Shared Runner ←→ AI Provider (API)
                           Your Workspace
                      ┌─────────────────────┐
                      │ CLAUDE.md  USER.md   │
-                     │ SEEDS.md   MEMORY.md │
-                     │ IDENTITY.md SOUL.md  │
-                     │ memory/    jobs.json  │
+                     │ SOUL.md    SEEDS.md  │
+                     │ MEMORY.md  memory/   │
                      └─────────────────────┘
 ```
 
@@ -108,6 +107,11 @@ If a user wants to use the same workspace from another platform (e.g. future Tel
 |---------|-------------|
 | `/help` | Show available commands |
 | `/new` or `/reset` | Start a new conversation (clear current session) |
+| `/dashboard` | Open workspace file manager (web UI) |
+| `/todo` | List your todos |
+| `/todo <item>` | Add a todo item |
+| `/yt <url>` | YouTube transcript analysis |
+| `/yt <url> verify:true` | Transcript + fact-check & explore |
 | `/connection <code>` | Register with an invite code |
 | `/share-code` | Generate invite code + server invite link |
 | `/bind-token` | Generate a cross-platform binding token |
@@ -137,6 +141,9 @@ All config lives in `app/.env`:
 | `SESSION_TTL_MINUTES` | Session expiration | `60` |
 | `COMPACT_THRESHOLD` | Token count before session rotation | `80000` |
 | `SECURITY_ADMIN_ID` | Discord user ID for security alerts | — |
+| `WEB_PORT` | Web dashboard port (set to enable) | — |
+| `WEB_PUBLIC_URL` | Public URL for ngrok/tunnel | — |
+| `NGROK_DOMAIN` | ngrok domain (auto-managed by `ctl.sh`) | — |
 
 ## Architecture
 
@@ -151,7 +158,8 @@ app/
 │   │   ├── runner.js         # Shared runner (per-workspace queue, timeout, security)
 │   │   ├── workspace-manager.js  # Multi-workspace CRUD, binding, indexing
 │   │   └── security-monitor.js   # Tool call violation detector
-│   └── discord/              # Discord bridge
+│   ├── discord/              # Discord bridge
+│   └── web/                  # Web dashboard (file browser, auth)
 ├── scheduler/
 │   ├── common-jobs.json      # Engagement job definitions
 │   ├── jobs.json             # System maintenance jobs
@@ -179,15 +187,34 @@ Currently supported:
 
 ### Engagement system
 
-Event-driven jobs that fire based on user activity — not cron timers:
+14 event-driven jobs that fire based on user activity — not cron timers. Key examples:
 
 | Job | Trigger | What it does |
 |-----|---------|-------------|
 | Onboarding | USER.md has blank fields | Naturally gets to know new users through conversation |
+| Feature intro | After onboarding completes | Introduces workspace features (one-time) |
 | Seed watering | 30+ chat lines accumulated | Deep-dives into topics from conversations, creates knowledge notes |
 | Proactive check-in | Daily, if user was active in last 7 days | Casual message referencing recent context |
 | Idle check-in | 3 days since last message | Gentle nudge without guilt-tripping |
 | Discovery | Every 5 days | Searches for news/articles matching user interests |
+| Style calibration | After enough talk history | Learns the user's communication style |
+| Weekly synthesis | Weekly | Summarizes the week's conversations and growth |
+| Memory consolidation | Periodic | Distills daily notes into long-term memory |
+| Self-tune | Periodic | Adjusts interaction frequency based on engagement |
+
+All jobs respect **quiet hours** — no notifications during sleep.
+
+### Soul evolution
+
+The shared soul (`app/SOUL.md`) is not static — it self-evolves through three system-level jobs:
+
+| Job | Schedule | What it does |
+|-----|----------|-------------|
+| Self-reflection | Weekly | Reads all per-workspace `SOUL.md` files, extracts abstract patterns, identifies tensions |
+| Autonomous exploration | Twice/week | Explores the soul's own interests via web search, forms independent opinions |
+| Tension resolution | Monthly | Reviews conflicts between shared and per-workspace souls — refine, reaffirm, or defer |
+
+Privacy: reflection jobs only read per-workspace `SOUL.md` — never user data.
 
 ### Workspace structure
 
@@ -195,14 +222,12 @@ Each user gets a private, sandboxed workspace:
 
 ```
 workspaces/data/<user-id>/
-├── CLAUDE.md      # Agent instructions (behavior, safety rules)
-├── USER.md        # About the human (name, language, interests, timezone)
-├── SOUL.md        # Agent personality and values
-├── IDENTITY.md    # Agent name, emoji, vibe
+├── CLAUDE.md      # Agent instructions (living operations manual)
+├── USER.md        # About the human (name, language, interests, AI naming)
+├── SOUL.md        # Agent personality and values (self-evolving)
 ├── SEEDS.md       # Knowledge seeds — topics to explore
 ├── MEMORY.md      # Long-term curated memory
-├── memory/        # Daily notes (YYYY-MM-DD.md)
-└── jobs.json      # Per-user custom jobs
+└── memory/        # Daily notes (YYYY-MM-DD.md)
 ```
 
 ### Security

@@ -31,9 +31,8 @@ Synapsis 讓你的 AI 擁有持久的身份、記憶，以及主動聯繫你的�
                         你的工作空間
                    ┌─────────────────────┐
                    │ CLAUDE.md  USER.md   │
-                   │ SEEDS.md   MEMORY.md │
-                   │ IDENTITY.md SOUL.md  │
-                   │ memory/    jobs.json  │
+                   │ SOUL.md    SEEDS.md  │
+                   │ MEMORY.md  memory/   │
                    └─────────────────────┘
 ```
 
@@ -108,6 +107,11 @@ synapsis uninstall # 完整移除 synapsis
 |------|------|
 | `/help` | 顯示可用指令 |
 | `/new` 或 `/reset` | 開始新對話（清除目前 session） |
+| `/dashboard` | 開啟工作空間檔案管理器（Web UI） |
+| `/todo` | 列出待辦事項 |
+| `/todo <item>` | 新增待辦事項 |
+| `/yt <url>` | YouTube 逐字稿分析 |
+| `/yt <url> verify:true` | 逐字稿 + 事實查核與探索 |
 | `/connection <code>` | 用邀請碼註冊 |
 | `/share-code` | 產生邀請碼 + server 邀請連結 |
 | `/bind-token` | 產生跨平台綁定 token |
@@ -137,6 +141,9 @@ synapsis uninstall # 完整移除 synapsis
 | `SESSION_TTL_MINUTES` | Session 過期時間 | `60` |
 | `COMPACT_THRESHOLD` | Session 輪換的 token 門檻 | `80000` |
 | `SECURITY_ADMIN_ID` | 接收安全警報的 Discord 使用者 ID | — |
+| `WEB_PORT` | Web 儀表板連接埠（設定即啟用）| — |
+| `WEB_PUBLIC_URL` | ngrok/tunnel 的公開 URL | — |
+| `NGROK_DOMAIN` | ngrok 網域（由 `ctl.sh` 自動管理）| — |
 
 ## 架構
 
@@ -151,7 +158,8 @@ app/
 │   │   ├── runner.js         # 共用 Runner（每 workspace 佇列、逾時、安全）
 │   │   ├── workspace-manager.js  # 多 workspace CRUD、綁定、索引
 │   │   └── security-monitor.js   # 工具呼叫違規偵測器
-│   └── discord/              # Discord 橋接
+│   ├── discord/              # Discord 橋接
+│   └── web/                  # Web 儀表板（檔案瀏覽、認證）
 ├── scheduler/
 │   ├── common-jobs.json      # 互動任務定義
 │   ├── jobs.json             # 系統維護任務
@@ -179,15 +187,34 @@ app/
 
 ### 互動系統
 
-基於使用者活動觸發的事件驅動任務 — 而非 cron 計時器：
+14 個基於使用者活動觸發的事件驅動任務 — 而非 cron 計時器。主要範例：
 
 | 任務 | 觸發條件 | 做什麼 |
 |------|----------|--------|
 | 引導對話 | USER.md 有空白欄位 | 透過自然對話認識新使用者 |
+| 功能介紹 | 引導完成後 | 介紹工作空間功能（一次性） |
 | 種子澆灌 | 累積 30+ 行對話 | 深入探討對話中的話題，建立知識筆記 |
 | 主動問候 | 每日，若最近 7 天有活動 | 引用近期脈絡的隨意訊息 |
 | 閒置問候 | 3 天未互動 | 溫和的提醒，不帶罪惡感 |
 | 探索分享 | 每 5 天 | 搜尋符合使用者興趣的新聞和文章 |
+| 風格校準 | 累積足夠對話後 | 學習使用者的溝通風格 |
+| 週報 | 每週 | 總結本週的對話和成長 |
+| 記憶整合 | 定期 | 將每日筆記蒸餾為長期記憶 |
+| 自我調頻 | 定期 | 根據互動反饋調整互動頻率 |
+
+所有任務遵守**靜默時段** — 睡眠時間不發送通知。
+
+### 靈魂演化
+
+共享靈魂（`app/SOUL.md`）不是靜態的 — 透過三個系統級任務自我演化：
+
+| 任務 | 排程 | 做什麼 |
+|------|------|--------|
+| 自我反思 | 每週 | 讀取所有 workspace 的 `SOUL.md`，萃取抽象模式，識別張力 |
+| 自主探索 | 每週兩次 | 透過網路搜尋探索靈魂自己的興趣，形成獨立觀點 |
+| 張力調解 | 每月 | 審視共享靈魂與個人靈魂的衝突 — 精煉、重申或保留 |
+
+隱私：反思任務僅讀取各 workspace 的 `SOUL.md` — 絕不讀取使用者資料。
 
 ### 工作空間結構
 
@@ -195,14 +222,12 @@ app/
 
 ```
 workspaces/data/<user-id>/
-├── CLAUDE.md      # Agent 指令（行為、安全規則）
-├── USER.md        # 關於使用者（名稱、語言、興趣、時區）
-├── SOUL.md        # Agent 的性格和價值觀
-├── IDENTITY.md    # Agent 的名字、表情符號、風格
+├── CLAUDE.md      # Agent 指令（自我維護的操作手冊）
+├── USER.md        # 關於使用者（名稱、語言、興趣、AI 命名）
+├── SOUL.md        # Agent 的性格和價值觀（自我演化）
 ├── SEEDS.md       # 知識種子 — 待探索的話題
 ├── MEMORY.md      # 長期精選記憶
-├── memory/        # 每日筆記（YYYY-MM-DD.md）
-└── jobs.json      # 使用者自訂任務
+└── memory/        # 每日筆記（YYYY-MM-DD.md）
 ```
 
 ### 安全
