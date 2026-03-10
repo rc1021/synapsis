@@ -520,10 +520,12 @@ class UserJobScheduler {
         }
       }
 
+      // Phase A: non-cooldown jobs first (callback, talk-history, spaced-review)
+      // These must not be blocked by cooldown-type jobs breaking the loop.
       for (const job of this.eventJobs) {
         const type = job.trigger?.type;
         if (!type) continue;
-        if (onCooldown && COOLDOWN_TYPES.has(type)) continue;
+        if (COOLDOWN_TYPES.has(type)) continue; // skip cooldown types in this phase
         if (job.requires && !fs.existsSync(path.join(wsDir, job.requires))) continue;
 
         try {
@@ -531,9 +533,29 @@ class UserJobScheduler {
 
           log.info(`Event trigger [${type}] fired for ${wsId}, running ${job.id}`);
           await this._runEventJob(job, wsId, wsDir);
-          if (COOLDOWN_TYPES.has(type)) break; // one cooldown job per workspace per scan
         } catch (err) {
           log.error(`Event job ${job.id} failed for ${wsId}: ${err.message}`);
+        }
+      }
+
+      // Phase B: cooldown-type jobs (proactive, idle-checkin, discovery)
+      // At most one fires per scan; blocked by cooldown marker.
+      if (!onCooldown) {
+        for (const job of this.eventJobs) {
+          const type = job.trigger?.type;
+          if (!type) continue;
+          if (!COOLDOWN_TYPES.has(type)) continue; // only cooldown types in this phase
+          if (job.requires && !fs.existsSync(path.join(wsDir, job.requires))) continue;
+
+          try {
+            if (!this._checkTrigger(job, wsDir)) continue;
+
+            log.info(`Event trigger [${type}] fired for ${wsId}, running ${job.id}`);
+            await this._runEventJob(job, wsId, wsDir);
+            break; // one cooldown job per workspace per scan
+          } catch (err) {
+            log.error(`Event job ${job.id} failed for ${wsId}: ${err.message}`);
+          }
         }
       }
     }
@@ -619,7 +641,9 @@ class UserJobScheduler {
           const cbPath = path.join(wsDir, PENDING_CALLBACKS_FILE);
           if (!fs.existsSync(cbPath)) return false;
           const callbacks = JSON.parse(fs.readFileSync(cbPath, 'utf-8'));
-          const today = new Date().toISOString().slice(0, 10);
+          // Use user's timezone for date comparison (not UTC)
+          const tz = this._getUserTimezone(wsDir);
+          const today = new Date().toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
           return callbacks.some(cb => !cb.followedUp && cb.targetDate <= today);
         } catch {
           return false;
