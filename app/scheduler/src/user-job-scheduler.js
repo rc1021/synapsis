@@ -908,6 +908,11 @@ class UserJobScheduler {
 
     if (!job || job.enabled === false) return;
 
+    // Default notify for per-workspace cron jobs: send output unless it's a known skip marker
+    if (!job.notify) {
+      job.notify = { when: 'not_match', match: '_OK' };
+    }
+
     try {
       await runUserJob(job, wsId, wsAbsPath);
     } catch (err) {
