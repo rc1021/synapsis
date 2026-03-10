@@ -110,7 +110,8 @@ async function executeJob(job) {
  * Build system prompt from channel rules + base rules + sync prompt.
  */
 function buildSystemPrompt(channelRules, isResume) {
-  const parts = [...(channelRules || []), ...BASE_RULES];
+  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'long', hour12: false });
+  const parts = [`Current time: ${now}`, ...(channelRules || []), ...BASE_RULES];
 
   if (_sharedSoul) {
     parts.push(_sharedSoul);
