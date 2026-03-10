@@ -32,6 +32,7 @@ const MAX_CONCURRENCY = parseInt(process.env.MAX_CONCURRENCY || '3', 10);
 const CLAUDE_IDLE_TIMEOUT = parseInt(process.env.CLAUDE_IDLE_TIMEOUT || '300000', 10);
 const CLAUDE_MAX_TIMEOUT = parseInt(process.env.CLAUDE_MAX_TIMEOUT || '900000', 10);
 const CLAUDE_MAX_EXTENSIONS = parseInt(process.env.CLAUDE_MAX_EXTENSIONS || '5', 10);
+const AI_CHAT_MODEL = process.env.AI_CHAT_MODEL || '';
 const ALLOWED_TOOLS = (process.env.ALLOWED_TOOLS || 'Read,Write,Edit,Glob,Grep,Agent,WebSearch,WebFetch,TodoWrite').split(',');
 
 // Per-workspace queues: same workspace serializes, different workspaces run in parallel
@@ -181,6 +182,7 @@ function runWithProvider({
       sandbox: true,
       verbose,
       mcpConfigPath: mcp.configPath,
+      ...(AI_CHAT_MODEL && { model: AI_CHAT_MODEL }),
     };
 
     log.info(`Runner spawn: provider=${provider.name} resume=${isResume} session=${sessionId} cwd=${cwd}`);
