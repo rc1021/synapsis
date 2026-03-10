@@ -27,6 +27,9 @@ const USER_MD_FILE = 'USER.md';
 const NOT_SET_MARKER = '_(not set)_';
 const PREFERENCES_FILE = 'preferences.json';
 const PENDING_CALLBACKS_FILE = 'pending-callbacks.json';
+const DEFAULT_QUIET_START = '23:30'; // 11:30 PM
+const DEFAULT_QUIET_END = '07:00';  // 7:00 AM
+const DEFAULT_TIMEZONE = 'Asia/Taipei';
 
 class UserJobScheduler {
   constructor() {
@@ -375,6 +378,85 @@ class UserJobScheduler {
     }
   }
 
+  // --- Quiet hours ---
+
+  /**
+   * Extract timezone from USER.md (e.g. "Asia/Taipei", "UTC+8").
+   * Falls back to preferences.json preferredTimezone, then DEFAULT_TIMEZONE.
+   */
+  _getUserTimezone(wsDir) {
+    try {
+      const userMd = fs.readFileSync(path.join(wsDir, USER_MD_FILE), 'utf-8');
+      const match = userMd.match(/\*\*Timezone:\*\*\s*(.+)/i);
+      if (match) {
+        const tz = match[1].trim();
+        if (tz && tz !== NOT_SET_MARKER) {
+          // Validate timezone by trying to use it
+          try {
+            new Date().toLocaleString('en-US', { timeZone: tz });
+            return tz;
+          } catch {
+            // Invalid timezone string, fall through
+          }
+        }
+      }
+    } catch {
+      // No USER.md
+    }
+
+    // Try preferences.json
+    try {
+      const prefsPath = path.join(wsDir, PREFERENCES_FILE);
+      if (fs.existsSync(prefsPath)) {
+        const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
+        if (prefs.preferredTimezone) {
+          try {
+            new Date().toLocaleString('en-US', { timeZone: prefs.preferredTimezone });
+            return prefs.preferredTimezone;
+          } catch {
+            // Invalid
+          }
+        }
+      }
+    } catch {
+      // No preferences
+    }
+
+    return DEFAULT_TIMEZONE;
+  }
+
+  /**
+   * Parse "HH:MM" string to minutes since midnight. Also accepts integer hours for backward compat.
+   */
+  _toMinutes(val) {
+    if (typeof val === 'number') return val * 60;
+    const [h, m] = String(val).split(':').map(Number);
+    return h * 60 + (m || 0);
+  }
+
+  /**
+   * Check if it's currently quiet hours for a workspace.
+   * Uses user's timezone and preferences for custom quiet hours.
+   * Default: 23:30–07:00 in user's timezone.
+   */
+  _isQuietHourForWorkspace(wsDir) {
+    const tz = this._getUserTimezone(wsDir);
+    const quietStart = this._toMinutes(this._getPreference(wsDir, 'quietHours.start', DEFAULT_QUIET_START));
+    const quietEnd = this._toMinutes(this._getPreference(wsDir, 'quietHours.end', DEFAULT_QUIET_END));
+
+    // Get current hour and minute in user's timezone
+    const now = new Date();
+    const hourStr = now.toLocaleString('en-US', { timeZone: tz, hour: 'numeric', hour12: false });
+    const minStr = now.toLocaleString('en-US', { timeZone: tz, minute: 'numeric' });
+    const current = parseInt(hourStr, 10) * 60 + parseInt(minStr, 10);
+
+    // Handle wrap-around (e.g. 23:30 → 07:00)
+    if (quietStart > quietEnd) {
+      return current >= quietStart || current < quietEnd;
+    }
+    return current >= quietStart && current < quietEnd;
+  }
+
   // --- Event triggers ---
 
   /**
@@ -391,6 +473,9 @@ class UserJobScheduler {
     const COOLDOWN_TYPES = new Set(['proactive', 'idle-checkin', 'discovery']);
 
     for (const { wsId, wsDir } of wsDirs) {
+      // Quiet hours: skip all event jobs during user's sleep hours
+      if (this._isQuietHourForWorkspace(wsDir)) continue;
+
       const cooldownMarker = path.join(MARKERS_DIR, wm.workspaceRelPath(wsId), '.last-event');
       const onCooldown = this._markerTooRecent(cooldownMarker, EVENT_COOLDOWN_HOURS / 24);
 
