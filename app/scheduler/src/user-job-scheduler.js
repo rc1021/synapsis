@@ -908,9 +908,9 @@ class UserJobScheduler {
 
     if (!job || job.enabled === false) return;
 
-    // Default notify for per-workspace cron jobs: send output unless it's a known skip marker
+    // Default notify for per-workspace cron jobs: always send output to user
     if (!job.notify) {
-      job.notify = { when: 'not_match', match: '_OK' };
+      job.notify = { when: 'always' };
     }
 
     try {
