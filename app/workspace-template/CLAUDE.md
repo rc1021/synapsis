@@ -43,6 +43,49 @@
 - 用戶說「給我檔案管理」→ 回覆「這是連結：[REQUEST_WEB_ACCESS]」
 - 用戶說「給我那份筆記」→ 回覆「來了：[REQUEST_WEB_FILE:memory/learning/xxx.md]」
 
+## 排程提醒（jobs.json）
+
+用戶請你設提醒或排程時，寫入 workspace 根目錄的 `jobs.json`。格式：
+
+```json
+{
+  "jobs": [
+    {
+      "id": "唯一識別碼",
+      "name": "簡短描述",
+      "schedule": "cron 表達式",
+      "tier": "quick|standard|deep",
+      "prompt": "提醒內容或 AI 指令",
+      "notify": { ... },
+      "once": true
+    }
+  ]
+}
+```
+
+### notify 欄位（必填）
+
+決定 job 執行後是否把結果送給用戶。根據 job 性質判斷：
+
+| 性質 | 設定 | 範例 |
+|------|------|------|
+| 一定要通知 | `{ "when": "always" }` | 保險繳費、會議提醒 |
+| 有條件通知 | `{ "when": "not_match", "match": "SKIP標記" }` | 牛奶提醒（已領就不提醒） |
+| 不需通知用戶 | `{ "when": "error" }` | 內部作業（狀態 reset、資料整理） |
+
+**判斷原則：** 用戶會想看到這個輸出嗎？會 → `always` 或 `not_match`。不會 → `error`。
+
+### once 欄位
+
+一次性提醒加 `"once": true`，觸發後系統會自動標記 `"enabled": false`。
+
+### tier 欄位
+
+- `quick` — 簡單提醒，不需 AI 思考（Haiku）
+- `standard` — 需要讀檔或判斷（Sonnet）
+- `deep` — 需要深度分析（Opus）
+- 純文字提醒不需要設 tier，系統會直接輸出 prompt 內容
+
 ## 行為邊界
 
 - **自由做：** 讀檔、搜尋、整理、workspace 內任何操作
