@@ -164,6 +164,7 @@ function buildCliArgs({
   systemPrompt,
   sandbox = false,
   verbose = false,
+  mcpConfigPath,
 }) {
   const args = [
     '-p', prompt,
@@ -171,12 +172,16 @@ function buildCliArgs({
     '--dangerously-skip-permissions',
   ];
 
-  // Disable MCP servers — bot doesn't need them, and they may fail auth in sandbox
-  const emptyMcpConfig = path.join(os.tmpdir(), 'synapsis-empty-mcp.json');
-  if (!fs.existsSync(emptyMcpConfig)) {
-    fs.writeFileSync(emptyMcpConfig, JSON.stringify({ mcpServers: {} }));
+  // MCP config: use provided path (merged system+workspace) or empty fallback
+  if (mcpConfigPath) {
+    args.push('--strict-mcp-config', '--mcp-config', mcpConfigPath);
+  } else {
+    const emptyMcpConfig = path.join(os.tmpdir(), 'synapsis-empty-mcp.json');
+    if (!fs.existsSync(emptyMcpConfig)) {
+      fs.writeFileSync(emptyMcpConfig, JSON.stringify({ mcpServers: {} }));
+    }
+    args.push('--strict-mcp-config', '--mcp-config', emptyMcpConfig);
   }
-  args.push('--strict-mcp-config', '--mcp-config', emptyMcpConfig);
 
   if (allowedTools && allowedTools.length > 0) {
     args.push('--allowedTools', ...allowedTools);

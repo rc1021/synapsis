@@ -8,6 +8,7 @@ const registry = require('../../bridges/shared/providers/registry');
 const { BASE_RULES } = require('../../bridges/shared/system-prompt');
 const wm = require('../../bridges/shared/workspace-manager');
 const { sanitizeOutput, isTextFile } = require('../../bridges/shared/sanitize');
+const { buildMcpConfig } = require('../../bridges/shared/mcp-config');
 
 const OUTBOX_DIR = 'outbox';
 const MAX_OUTBOX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -178,8 +179,8 @@ function collectChangedSouls() {
         }
         diffEntries.push(addedLines.join('\n'));
       }
-    } catch {
-      // SOUL.md doesn't exist or unreadable
+    } catch (err) {
+      log.debug(`Skipping soul in ${wsDir}: ${err.message}`);
     }
   }
 
@@ -290,18 +291,25 @@ async function runAI(job) {
     ? [config.systemPrompt]
     : [...SYSTEM_PROMPT];
 
-  log.info(`AI spawn for job ${job.id}: provider=${provider.name} model=${config.model || 'default'}`);
+  // System jobs get system-level MCP only (no per-workspace)
+  const mcp = buildMcpConfig(null);
+  const mergedAllowedTools = config.allowedTools
+    ? [...config.allowedTools, ...mcp.toolPatterns]
+    : config.allowedTools;
+
+  log.info(`AI spawn for job ${job.id}: provider=${provider.name} model=${config.model || 'default'} mcp=${mcp.toolPatterns.join(',') || 'none'}`);
 
   try {
     const result = await provider.run({
       prompt,
       model: config.model,
-      allowedTools: config.allowedTools,
+      allowedTools: mergedAllowedTools,
       disallowedTools: config.disallowedTools,
       maxBudgetUsd: config.maxBudgetUsd,
       systemPrompt: systemParts.join(' '),
       cwd: PROJECT_DIR,
       timeout,
+      mcpConfigPath: mcp.configPath,
     });
 
     const text = result.text || '';
@@ -446,18 +454,23 @@ async function runUserJob(job, wsId, wsAbsPath) {
     // Fixed whitelist — user has no control over tools
     const USER_JOB_ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Agent', 'WebSearch', 'WebFetch', 'TodoWrite'];
 
+    // Merge system + per-workspace MCP config
+    const mcp = buildMcpConfig(wsAbsPath);
+    const allAllowedTools = [...USER_JOB_ALLOWED_TOOLS, ...mcp.toolPatterns];
+
     const provider = registry.get();
-    log.info(`AI spawn for user job ${runKey}: provider=${provider.name} model=${model}, timeout=${timeout}ms`);
+    log.info(`AI spawn for user job ${runKey}: provider=${provider.name} model=${model}, timeout=${timeout}ms, mcp=${mcp.toolPatterns.join(',') || 'none'}`);
 
     const result = await provider.run({
       prompt,
       model,
-      allowedTools: USER_JOB_ALLOWED_TOOLS,
+      allowedTools: allAllowedTools,
       disallowedTools: ['Bash'],
       systemPrompt: systemParts.join(' '),
       cwd: wsAbsPath,
       sandbox: true,
       timeout,
+      mcpConfigPath: mcp.configPath,
     });
 
     output = result.text || 'Job completed (no text output)';

@@ -29,6 +29,7 @@ app/
 │   │   │   ├── claude-cli.js # Claude CLI provider (spawn, sandbox, stream-json)
 │   │   │   └── claude-api.js # Claude API provider (@anthropic-ai/sdk)
 │   │   ├── runner.js         # Shared runner (concurrency queue, timeout, security monitor)
+│   │   ├── mcp-config.js     # MCP config merger (system + per-workspace → temp file)
 │   │   ├── claude-spawner.js # Backward-compat shim → delegates to claude-cli provider
 │   │   ├── logger.js         # Logger factory
 │   │   ├── system-prompt.js  # BASE_RULES shared across all channels
@@ -41,12 +42,16 @@ app/
 │   ├── migrations/           # Versioned workspace migration scripts (1.1.0.js, 1.2.0.js, ...)
 │   ├── jobs.json             # System job definitions (cron schedule + config)
 │   └── common-jobs.json      # Per-workspace event job templates (adaptive companion)
+├── mcp-system.json           # System-level MCP servers (applies to all workspaces)
+├── mcp-catalog.json          # Available MCP servers users can enable
 ├── workspace-template/       # Template for new workspaces
+│   ├── .mcp.json             # MCP config (user-selectable servers)
 │   ├── CLAUDE.md             # Operations manual (session startup, memory rules, self-update)
 │   ├── SOUL.md               # Personal soul (AI's evolving identity per user)
 │   ├── USER.md               # User profile + preferences (includes AI naming)
 │   ├── BOOTSTRAP.md          # First-conversation onboarding (deleted after use)
 │   └── MEMORY.md             # Long-term memory template
+├── test/                     # Unit tests (node:test)
 ├── .env                      # Environment config (tokens, paths, limits)
 ├── ctl.sh                    # Service control (install/start/stop/restart/status/logs)
 └── logs/                     # Auto-rotated log files
@@ -58,6 +63,7 @@ app/
 cd app
 npm install
 npm start              # or: node src/index.js
+npm test               # run unit tests (node:test)
 ```
 
 Service management:
@@ -81,10 +87,11 @@ Service management:
 - `WEB_PORT` — Web dashboard port (set to enable, e.g. `3001`)
 - `WEB_PUBLIC_URL` — Full public URL for ngrok/tunnel (e.g. `https://xxx.ngrok-free.app`)
 - `NGROK_DOMAIN` — ngrok domain for auto-managed tunnel via `ctl.sh`
+- `API_MAX_RETRIES` — Max retry attempts for transient API errors (default: 3)
 
 ## Architecture patterns
 
-- **Provider abstraction:** `bridges/shared/providers/` — each provider implements `run()` (simple) and `runStream()` (streaming EventEmitter). Registry resolves provider by `AI_PROVIDER` env var.
+- **Provider abstraction:** `bridges/shared/providers/` — each provider implements `run()` (simple) and `runStream()` (streaming EventEmitter). Registry resolves provider by `AI_PROVIDER` env var. Includes automatic retry with exponential backoff for transient errors (429, 5xx, network).
 - **Channel interface:** Each bridge exports `{ name, start, cleanup }`. Bridge-specific rules (e.g. `DISCORD_RULES`) are passed to the shared runner.
 - **Shared runner:** `bridges/shared/runner.js` — per-workspace serialized concurrency queue, idle/hard-cap timeout, security monitoring, progress callbacks. Used by all bridges.
 - **Soul system:** Two-layer identity with self-evolution — `app/SOUL.md` (shared soul, evolves via system-level reflection jobs) + per-workspace `SOUL.md` (personal, AI evolves it). Shared soul grows through abstract self-reflection, autonomous exploration, and tension resolution. See "Soul evolution system" section below.
@@ -94,6 +101,7 @@ Service management:
 - **Engagement tracking:** `bridges/shared/engagement.js` — tracks DM delivery → user reply → engagement scoring (high/medium/low/none). Used by self-tune job to adjust interaction frequency.
 - **Web dashboard:** `bridges/web/` — lightweight HTTP server (Node.js built-in `http`, zero dependencies) for workspace file browsing/upload/download. Auth: one-time token → session cookie. AI outputs `[REQUEST_WEB_ACCESS]` marker → bridge replaces with tokenized URL. Bot/crawler requests ignored to prevent Discord link preview from consuming tokens.
 - **Migration system:** `scheduler/migrations/` — file-based migration chain. Each version gets `X.Y.Z.js` exporting `migrate(ctx)`. Runner auto-discovers and executes pending migrations in semver order at startup. Bump `package.json` version to trigger.
+- **MCP (Model Context Protocol):** Two-layer config — system-level (`app/mcp-system.json`, applies to all) + per-workspace (`.mcp.json`, user-selected). Merged at spawn time via `bridges/shared/mcp-config.js` into a temp file passed to `--mcp-config`. MCP tool patterns auto-added to `allowedTools`. Available servers cataloged in `app/mcp-catalog.json`.
 
 ## Coding conventions
 
@@ -104,6 +112,15 @@ Service management:
 - Environment loaded once in `app/src/index.js` via dotenv
 - Apply `BASE_RULES` system prompt to all channels
 - Sanitize all output (redact tokens, .env contents, infrastructure paths)
+- Never use empty `catch {}` — always log the error (use `log.warn` or `process.stderr.write` in logger itself)
+
+## Testing
+
+- Framework: Node.js built-in `node:test` (zero dependencies)
+- Run: `npm test` (uses `--test-force-exit` due to logger's `setInterval`)
+- Test files: `app/test/*.test.js`
+- Current coverage: security-monitor (violation detection, path escape), workspace-manager (helpers), retry logic (error classification)
+- When adding new modules, add corresponding test files in `test/`
 
 ## Adding a new AI provider
 
@@ -205,6 +222,38 @@ Defined in `bridges/shared/command-handler.js`, registered as Discord slash comm
 | `/bind <token>` | Bind account to an existing workspace |
 | `/help` | Show available commands |
 
+## MCP (Model Context Protocol) system
+
+Two-layer MCP configuration:
+
+| Layer | File | Scope | Who manages |
+|-------|------|-------|-------------|
+| System | `app/mcp-system.json` | All workspaces | Project owner |
+| Per-workspace | `workspace/.mcp.json` | Single workspace | User (via AI or manual) |
+
+At spawn time, `mcp-config.js` merges both layers → writes temp file → passes via `--mcp-config`.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `app/mcp-system.json` | System-level MCP servers (e.g. puppeteer) |
+| `app/mcp-catalog.json` | Available optional servers with setup instructions |
+| `workspace/.mcp.json` | Per-workspace user-selected servers |
+| `bridges/shared/mcp-config.js` | Merger module (caching, tool pattern extraction) |
+
+### Adding a system MCP server
+1. Add server config to `app/mcp-system.json` under `mcpServers`
+2. All workspaces get it automatically on next spawn
+
+### Adding a user-selectable MCP server
+1. Add server metadata to `app/mcp-catalog.json` under `servers`
+2. User copies desired server block into their workspace `.mcp.json`
+3. Merged automatically at spawn time
+
+### MCP + allowedTools
+MCP tool patterns (`mcp__<server>__*`) are auto-appended to `allowedTools` by runner and job-runner. No manual tool whitelist changes needed.
+
 ## Adding a workspace migration
 
 1. Create `scheduler/migrations/X.Y.Z.js` — export `function migrate(ctx)` (can be async)
@@ -221,4 +270,4 @@ Defined in `bridges/shared/command-handler.js`, registered as Discord slash comm
 - `SPEC.md` at repo root contains the spec for adding Telegram/WhatsApp bridges
 - `ADAPTIVE-COMPANION-SPEC.md` at repo root contains the adaptive companion evolution spec
 - `WEB-DASHBOARD-SPEC.md` at repo root contains the web dashboard design spec
-- No test suite currently exists
+- Test suite: `npm test` — uses Node.js built-in `node:test`, add new tests in `app/test/`

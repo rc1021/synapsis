@@ -18,6 +18,7 @@ const { BASE_RULES } = require('./system-prompt');
 const wm = require('./workspace-manager');
 const securityMonitor = require('./security-monitor');
 const registry = require('./providers/registry');
+const { buildMcpConfig } = require('./mcp-config');
 
 const SHARED_SOUL_PATH = path.join(__dirname, '..', '..', 'SOUL.md');
 let _sharedSoul = '';
@@ -164,17 +165,22 @@ function runWithProvider({
     const provider = registry.get();
     const systemPrompt = buildSystemPrompt(channelRules, isResume);
 
+    // Merge system + per-workspace MCP config
+    const mcp = buildMcpConfig(cwd);
+    const allAllowedTools = [...ALLOWED_TOOLS, ...mcp.toolPatterns];
+
     const streamOpts = {
       prompt,
       sessionId,
       resume: isResume,
       outputFormat: 'stream-json',
-      allowedTools: ALLOWED_TOOLS,
+      allowedTools: allAllowedTools,
       disallowedTools: ['Bash'],
       systemPrompt,
       cwd,
       sandbox: true,
       verbose,
+      mcpConfigPath: mcp.configPath,
     };
 
     log.info(`Runner spawn: provider=${provider.name} resume=${isResume} session=${sessionId} cwd=${cwd}`);

@@ -1,0 +1,27 @@
+{
+  "_description": "Available MCP servers that users can enable per-workspace. Copy the desired server block into your workspace .mcp.json and fill in the required env vars.",
+  "servers": {
+    "google-calendar": {
+      "description": "Read/write Google Calendar events",
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-google-calendar"],
+      "env": {
+        "GOOGLE_CLIENT_ID": "(required) OAuth client ID",
+        "GOOGLE_CLIENT_SECRET": "(required) OAuth client secret",
+        "GOOGLE_REDIRECT_URI": "(required) OAuth redirect URI"
+      },
+      "setup_url": "https://console.cloud.google.com/apis/credentials",
+      "tools_pattern": "mcp__google-calendar__*"
+    },
+    "notion": {
+      "description": "Read/search Notion pages and databases",
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-notion"],
+      "env": {
+        "NOTION_API_KEY": "(required) Notion integration token"
+      },
+      "setup_url": "https://www.notion.so/my-integrations",
+      "tools_pattern": "mcp__notion__*"
+    }
+  }
+}
