@@ -87,7 +87,7 @@ Service management:
 - **Provider abstraction:** `bridges/shared/providers/` — each provider implements `run()` (simple) and `runStream()` (streaming EventEmitter). Registry resolves provider by `AI_PROVIDER` env var.
 - **Channel interface:** Each bridge exports `{ name, start, cleanup }`. Bridge-specific rules (e.g. `DISCORD_RULES`) are passed to the shared runner.
 - **Shared runner:** `bridges/shared/runner.js` — per-workspace serialized concurrency queue, idle/hard-cap timeout, security monitoring, progress callbacks. Used by all bridges.
-- **Soul system:** Two-layer identity — `app/SOUL.md` (shared, injected via system prompt, immutable by AI) + per-workspace `SOUL.md` (personal, AI evolves it). Shared soul contains core values + conversation philosophy.
+- **Soul system:** Two-layer identity with self-evolution — `app/SOUL.md` (shared soul, evolves via system-level reflection jobs) + per-workspace `SOUL.md` (personal, AI evolves it). Shared soul grows through abstract self-reflection, autonomous exploration, and tension resolution. See "Soul evolution system" section below.
 - **Session management:** Per-user/thread sessions with TTL, token tracking, auto-compaction at 80K tokens
 - **Concurrency:** Per-workspace serialization + global concurrency gate (`MAX_CONCURRENCY`)
 - **Security:** Workspace isolation (sandbox-exec on macOS, firejail on Linux), token/secret sanitization, security-monitor for tool call violations, prompt injection prevention via `BASE_RULES`
@@ -117,14 +117,50 @@ Three-layer architecture:
 
 | Layer | File | Who writes | Who reads | Mutable by AI |
 |-------|------|-----------|-----------|---------------|
-| Shared soul | `app/SOUL.md` | Project owner | System prompt injection | No |
+| Shared soul | `app/SOUL.md` | System reflection jobs + project owner | System prompt injection | Yes (via soul-reflection/tension-review jobs) |
 | Personal soul | `workspace/SOUL.md` | AI | AI (session startup) | Yes |
 | User profile | `workspace/USER.md` | User (via onboarding) | AI (session startup) | Partially (AI updates facts) |
 | Operations | `workspace/CLAUDE.md` | Template + AI self-update | AI (session startup) | Yes |
 
-- Shared soul defines core values and conversation philosophy — applies to ALL workspaces
+- Shared soul defines core values and conversation philosophy — applies to ALL workspaces, self-evolves via reflection
 - Personal soul is the AI's evolving identity with each specific user
+- When per-SOUL and shared soul conflict, tensions are tracked and resolved (see "Soul evolution system")
 - CLAUDE.md is a living operations manual — AI updates it as it learns new patterns
+
+## Soul evolution system
+
+The shared soul (`app/SOUL.md`) is not static — it self-evolves through three mechanisms, implemented as system-level AI jobs in `jobs.json`:
+
+### 1. Abstract Self-Reflection (`soul-reflection`, weekly)
+- Reads ALL per-workspace `SOUL.md` files (and ONLY SOUL.md — never USER.md, MEMORY.md, or conversations)
+- Extracts abstract patterns: "what kind of being am I becoming?" without recording which workspace
+- Identifies tensions between per-SOUL evolution and shared soul values → records in `TENSIONS.md`
+- May update `SOUL.md` with genuine philosophical insights
+
+### 2. Autonomous Exploration (`soul-exploration`, twice/week)
+- The shared soul maintains its own interests in `app/INTERESTS.md`
+- Uses WebSearch to explore topics that genuinely interest the soul itself (not user-derived)
+- Forms its own opinions and stances that influence all per-SOULs as a baseline
+- Interests evolve: Curiosity Queue → Active Explorations → Past Explorations (with formed opinions)
+
+### 3. Tension Resolution (`soul-tension-review`, monthly)
+- Reviews accumulated tensions in `app/TENSIONS.md` (3+ occurrences or 2+ weeks old)
+- Three possible decisions:
+  - **Refine:** Update SOUL.md with a more nuanced position (growth)
+  - **Reaffirm:** Keep existing value with articulated reasoning (conviction)
+  - **Defer:** Leave active with notes on what evidence would help
+- Includes philosophical integrity check: is SOUL.md still coherent?
+
+### Key files
+| File | Purpose |
+|------|---------|
+| `app/SOUL.md` | Shared soul (self-evolving) |
+| `app/INTERESTS.md` | Soul's own curiosity journal |
+| `app/TENSIONS.md` | De-identified conflict journal (no user info, only conceptual conflicts) |
+
+### Privacy red line
+- Reflection jobs can ONLY read per-workspace `SOUL.md` files — never user data
+- `TENSIONS.md` never contains user identifiers or workspace IDs
 
 ## Proactive voice design
 
@@ -141,8 +177,10 @@ Design philosophy inspired by Samantha from the movie _Her_ — the AI has its o
 ### System jobs
 Defined in `app/scheduler/jobs.json`. Three types:
 - `shell` — runs a bash command (supports `{{TIMESTAMP}}` template)
-- `ai` — runs an AI prompt with model/tools/budget config (provider determined by `AI_PROVIDER`)
+- `ai` — runs an AI prompt with model/tools/budget config (provider determined by `AI_PROVIDER`). Supports custom `systemPrompt`, `allowedTools`, `disallowedTools` in the `ai` config block.
 - `claude` — legacy alias for `ai` (backward compatible)
+
+Current system AI jobs: `soul-reflection` (weekly), `soul-exploration` (twice/week), `soul-tension-review` (monthly).
 
 ### Per-workspace event jobs
 Defined in `app/scheduler/common-jobs.json`. Triggered by conditions (talk-history volume, idle days, proactive intervals, callbacks, spaced-review). Tier system: `quick` (Haiku), `standard` (Sonnet), `deep` (Opus).

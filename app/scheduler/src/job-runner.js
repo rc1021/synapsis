@@ -1,4 +1,5 @@
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const { resolve, join } = require('path');
 const log = require('./logger');
@@ -10,6 +11,7 @@ const { sanitizeOutput, isTextFile } = require('../../bridges/shared/sanitize');
 
 const OUTBOX_DIR = 'outbox';
 const MAX_OUTBOX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const SOUL_REFLECTION_STATE_PATH = join(__dirname, '..', '..', '.soul-reflection-state.json');
 
 const PROJECT_DIR = process.env.PROJECT_DIR || resolve(join(__dirname, '../..'));
 const SHARED_SOUL_PATH = join(__dirname, '..', '..', 'SOUL.md');
@@ -87,6 +89,132 @@ function isQuietHour(job) {
   return hour >= start && hour < end;
 }
 
+/**
+ * Simple line-based diff: returns only added/changed lines between old and new content.
+ * Not a full unified diff — just enough for the AI to see what's new.
+ */
+function simpleDiff(oldText, newText) {
+  const oldLines = new Set(oldText.split('\n').map(l => l.trim()).filter(Boolean));
+  const newLines = newText.split('\n');
+  const added = [];
+  for (const line of newLines) {
+    if (!oldLines.has(line.trim()) && line.trim()) {
+      added.push(line);
+    }
+  }
+  return added;
+}
+
+/**
+ * Collect per-workspace SOUL.md changes since last soul-reflection run.
+ *
+ * Strategy: store a content hash snapshot per workspace after each run.
+ * Next run: compare current content hash → unchanged = skip, changed = compute diff.
+ * First-time souls (no previous snapshot) get sent in full.
+ *
+ * Returns formatted string for {{CHANGED_SOULS}} template variable.
+ * Updates snapshot after collection.
+ */
+function collectChangedSouls() {
+  const dataDir = join(PROJECT_DIR, 'workspaces', 'data');
+  if (!fs.existsSync(dataDir)) return '(No workspaces found.)';
+
+  // Load previous snapshots: { snapshots: { anonymousId: { hash, content } }, ... }
+  let prevSnapshots = {};
+  try {
+    const state = JSON.parse(fs.readFileSync(SOUL_REFLECTION_STATE_PATH, 'utf-8'));
+    prevSnapshots = state.snapshots || {};
+  } catch {
+    // First run
+  }
+
+  const newEntries = [];   // First-time souls (full content)
+  const diffEntries = [];  // Changed souls (diff only)
+  const nextSnapshots = {};
+  let totalUnchanged = 0;
+
+  // Use a stable anonymous index (not workspace ID) for snapshot keys
+  const wsDirs = fs.readdirSync(dataDir).sort();
+  for (let i = 0; i < wsDirs.length; i++) {
+    const wsDir = wsDirs[i];
+    const soulPath = join(dataDir, wsDir, 'SOUL.md');
+    // Use a hash of wsDir as anonymous key (not the wsDir itself, for privacy)
+    const anonKey = crypto.createHash('sha256').update(wsDir).digest('hex').slice(0, 12);
+
+    try {
+      const stat = fs.statSync(soulPath);
+      if (!stat.isFile()) continue;
+
+      const content = fs.readFileSync(soulPath, 'utf-8').trim();
+
+      // Skip unmodified template files
+      if (content.includes('_(尚未定義') && !content.includes('## 關係\n\n_')) {
+        totalUnchanged++;
+        continue;
+      }
+
+      const hash = crypto.createHash('sha256').update(content).digest('hex');
+
+      // Save snapshot for next run (store content for future diff)
+      nextSnapshots[anonKey] = { hash, content };
+
+      const prev = prevSnapshots[anonKey];
+      if (prev && prev.hash === hash) {
+        // Content identical — skip
+        totalUnchanged++;
+        continue;
+      }
+
+      if (!prev) {
+        // First time seeing this soul — send full content
+        newEntries.push(content);
+      } else {
+        // Changed — compute diff
+        const addedLines = simpleDiff(prev.content, content);
+        if (addedLines.length === 0) {
+          // Only deletions/reordering, no new content — skip
+          totalUnchanged++;
+          continue;
+        }
+        diffEntries.push(addedLines.join('\n'));
+      }
+    } catch {
+      // SOUL.md doesn't exist or unreadable
+    }
+  }
+
+  // Persist snapshots
+  try {
+    fs.writeFileSync(SOUL_REFLECTION_STATE_PATH, JSON.stringify({
+      lastRunISO: new Date().toISOString(),
+      snapshots: nextSnapshots,
+    }, null, 2));
+  } catch (err) {
+    log.warn(`Failed to save soul-reflection state: ${err.message}`);
+  }
+
+  const totalChanged = newEntries.length + diffEntries.length;
+
+  if (totalChanged === 0) {
+    return `(No per-SOUL changes since last reflection. ${totalUnchanged} workspace(s) unchanged.)`;
+  }
+
+  const parts = [];
+  parts.push(`${totalChanged} per-SOUL(s) changed since last reflection (${totalUnchanged} unchanged):\n`);
+
+  let idx = 1;
+  for (const content of newEntries) {
+    parts.push(`--- Per-SOUL ${idx} (first reflection, full content) ---\n${content}`);
+    idx++;
+  }
+  for (const diff of diffEntries) {
+    parts.push(`--- Per-SOUL ${idx} (new/changed lines only) ---\n${diff}`);
+    idx++;
+  }
+
+  return parts.join('\n\n');
+}
+
 function templateReplace(str, job) {
   const now = new Date();
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -97,6 +225,9 @@ function templateReplace(str, job) {
   }
   if (job && job._talkHistory) {
     result = result.replace(/\{\{TALK_HISTORY\}\}/g, job._talkHistory);
+  }
+  if (result.includes('{{CHANGED_SOULS}}')) {
+    result = result.replace(/\{\{CHANGED_SOULS\}\}/g, collectChangedSouls());
   }
   return result;
 }
@@ -154,6 +285,11 @@ async function runAI(job) {
   const timeout = job.timeout || 120000;
   const provider = registry.get();
 
+  // Support custom systemPrompt from job config (for soul-evolution jobs etc.)
+  const systemParts = config.systemPrompt
+    ? [config.systemPrompt]
+    : [...SYSTEM_PROMPT];
+
   log.info(`AI spawn for job ${job.id}: provider=${provider.name} model=${config.model || 'default'}`);
 
   try {
@@ -161,8 +297,9 @@ async function runAI(job) {
       prompt,
       model: config.model,
       allowedTools: config.allowedTools,
+      disallowedTools: config.disallowedTools,
       maxBudgetUsd: config.maxBudgetUsd,
-      systemPrompt: SYSTEM_PROMPT.join(' '),
+      systemPrompt: systemParts.join(' '),
       cwd: PROJECT_DIR,
       timeout,
     });
