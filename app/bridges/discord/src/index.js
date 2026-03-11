@@ -3,6 +3,8 @@ const { resolve, join } = require('path');
 const fs = require('fs');
 const SessionStore = require('./session-store');
 const { enqueue } = require('./claude-runner');
+const { classifyTier } = require('../../shared/tier-classifier');
+const { TIER_MODELS } = require('../../shared/runner');
 const { splitMessage } = require('./message-splitter');
 const { parseCommand, handleCommand } = require('../../shared/command-handler');
 const wm = require('../../shared/workspace-manager');
@@ -664,6 +666,9 @@ function setupEventHandlers() {
     };
     const stopTyping = () => clearInterval(typingTimer);
 
+    // Classify tier in parallel with typing indicator startup
+    const tierPromise = classifyTier(fullPrompt);
+
     startTyping();
 
     // --- Progress message state ---
@@ -866,10 +871,12 @@ function setupEventHandlers() {
         sessionId = sessions.getOrCreate(key);
       }
 
-      log.info(`Request from ${message.author.tag} [${key}] resume=${isResume} ws=${wsPath}`);
+      const tier = await tierPromise;
+      const model = TIER_MODELS[tier];
+      log.info(`Request from ${message.author.tag} [${key}] resume=${isResume} ws=${wsPath} tier=${tier} model=${model}`);
       let result;
       try {
-        result = await enqueue(fullPrompt, sessionId, isResume, onProgress, wsPath);
+        result = await enqueue(fullPrompt, sessionId, isResume, onProgress, wsPath, model);
       } catch (err) {
         if (isResume && !err.timedOut) {
           log.warn(`Resume failed for ${key} (${err.message}), retrying with new session`);

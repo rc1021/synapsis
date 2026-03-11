@@ -22,9 +22,10 @@ const DISCORD_RULES = [
  * @param {boolean} isResume
  * @param {function} onProgress
  * @param {string} wsPath - Workspace path (cwd)
+ * @param {string} [model] - Optional model override (from tier classifier)
  * @returns {Promise<import('../../shared/runner').RunnerResult>}
  */
-function enqueue(prompt, sessionId, isResume, onProgress, wsPath) {
+function enqueue(prompt, sessionId, isResume, onProgress, wsPath, model) {
   return sharedEnqueue({
     prompt,
     sessionId,
@@ -33,6 +34,7 @@ function enqueue(prompt, sessionId, isResume, onProgress, wsPath) {
     cwd: wsPath,
     channelRules: DISCORD_RULES,
     verbose: true,
+    ...(model && { model }),
   });
 }
 
