@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const log = require('./logger');
 
 const SAVE_INTERVAL = 30_000; // 30 seconds
-const COMPACT_THRESHOLD = parseInt(process.env.COMPACT_THRESHOLD || '80000', 10);
+const COMPACT_THRESHOLD = parseInt(process.env.COMPACT_THRESHOLD || '180000', 10);
 
 class SessionStore {
   /**

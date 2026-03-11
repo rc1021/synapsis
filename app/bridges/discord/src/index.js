@@ -3,6 +3,8 @@ const { resolve, join } = require('path');
 const fs = require('fs');
 const SessionStore = require('./session-store');
 const { enqueue } = require('./claude-runner');
+const { classifyTier } = require('../../shared/tier-classifier');
+const { TIER_MODELS } = require('../../shared/runner');
 const { splitMessage } = require('./message-splitter');
 const { parseCommand, handleCommand } = require('../../shared/command-handler');
 const wm = require('../../shared/workspace-manager');
@@ -467,7 +469,7 @@ function setupEventHandlers() {
 
         const shortId = sessionId.slice(0, 8);
         const fmtTokens = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
-        const limit = parseInt(process.env.COMPACT_THRESHOLD || '80000', 10);
+        const limit = parseInt(process.env.COMPACT_THRESHOLD || '180000', 10);
         const pct = ((result.inputTokens / limit) * 100).toFixed(1);
         const tokenInfo = `⛁ ${fmtTokens(result.inputTokens)} (${pct}%)`;
         const withFooter = responseText + `\n\n-# ⎔ ${shortId} · ${tokenInfo}`;
@@ -477,7 +479,7 @@ function setupEventHandlers() {
         for (let i = 0; i < chunks.length; i++) {
           const sanitized = sanitizeOutput(chunks[i], wsPath);
           if (!sanitized.safe) {
-            log.warn(`[SECURITY] /yt blocked response chunk ${i}`);
+            log.warn(`[SECURITY] /yt blocked response chunk ${i} — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
             if (i === 0) await interaction.editReply('Response blocked: contained restricted information.');
             break;
           }
@@ -592,7 +594,7 @@ function setupEventHandlers() {
       if (result) {
         const sanitized = sanitizeOutput(result.reply, wsPath);
         if (!sanitized.safe) {
-          log.warn(`[SECURITY] Blocked command reply — infrastructure leak detected`);
+          log.warn(`[SECURITY] Blocked command reply — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
           await message.channel.send('Response blocked: contained restricted information.');
           return;
         }
@@ -663,6 +665,9 @@ function setupEventHandlers() {
       }, TYPING_INTERVAL);
     };
     const stopTyping = () => clearInterval(typingTimer);
+
+    // Classify tier in parallel with typing indicator startup
+    const tierPromise = classifyTier(fullPrompt);
 
     startTyping();
 
@@ -866,10 +871,12 @@ function setupEventHandlers() {
         sessionId = sessions.getOrCreate(key);
       }
 
-      log.info(`Request from ${message.author.tag} [${key}] resume=${isResume} ws=${wsPath}`);
+      const tier = await tierPromise;
+      const model = TIER_MODELS[tier];
+      log.info(`Request from ${message.author.tag} [${key}] resume=${isResume} ws=${wsPath} tier=${tier} model=${model}`);
       let result;
       try {
-        result = await enqueue(fullPrompt, sessionId, isResume, onProgress, wsPath);
+        result = await enqueue(fullPrompt, sessionId, isResume, onProgress, wsPath, model);
       } catch (err) {
         if (isResume && !err.timedOut) {
           log.warn(`Resume failed for ${key} (${err.message}), retrying with new session`);
@@ -932,7 +939,7 @@ function setupEventHandlers() {
 
       const shortId = sessionId.slice(0, 8);
       const fmtTokens = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
-      const limit = parseInt(process.env.COMPACT_THRESHOLD || '80000', 10);
+      const limit = parseInt(process.env.COMPACT_THRESHOLD || '180000', 10);
       const pct = ((result.inputTokens / limit) * 100).toFixed(1);
       const tokenInfo = `⛁ ${fmtTokens(result.inputTokens)} (${pct}%)`;
       const withFooter = responseText + `\n\n-# ⎔ ${shortId} · ${tokenInfo}`;
@@ -940,7 +947,7 @@ function setupEventHandlers() {
       for (let i = 0; i < chunks.length; i++) {
         const sanitized = sanitizeOutput(chunks[i], wsPath);
         if (!sanitized.safe) {
-          log.warn(`[SECURITY] Blocked response chunk ${i} — infrastructure leak detected`);
+          log.warn(`[SECURITY] Blocked response chunk ${i} — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
           await message.channel.send('Response blocked: contained restricted information.');
           break;
         }

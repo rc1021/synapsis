@@ -83,6 +83,7 @@ Service management:
 - `MAX_CONCURRENCY` — Max parallel AI processes (default: 3)
 - `CLAUDE_TIMEOUT` — Hard timeout in ms (default: 300000)
 - `AI_PROVIDER` — AI backend: `claude-api` (default) | `claude-cli` (personal/dev only)
+- `AI_CHAT_MODEL` — Default model for Discord chat conversations (e.g. `claude-sonnet-4-6`). Overrides CLI/API default. Scheduler jobs use their own tier-based model.
 - `ANTHROPIC_API_KEY` — Required for default `claude-api` provider
 - `WEB_PORT` — Web dashboard port (set to enable, e.g. `3001`)
 - `WEB_PUBLIC_URL` — Full public URL for ngrok/tunnel (e.g. `https://xxx.ngrok-free.app`)

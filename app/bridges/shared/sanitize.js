@@ -52,8 +52,9 @@ function sanitizeOutput(text, wsPath) {
   ];
 
   for (const pattern of leakPatterns) {
-    if (pattern.test(result)) {
-      return { safe: false, text: result };
+    const match = result.match(pattern);
+    if (match) {
+      return { safe: false, text: result, blockedBy: pattern.toString(), matchedText: match[0].slice(0, 60) };
     }
   }
 
