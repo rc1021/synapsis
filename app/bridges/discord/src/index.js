@@ -479,7 +479,7 @@ function setupEventHandlers() {
         for (let i = 0; i < chunks.length; i++) {
           const sanitized = sanitizeOutput(chunks[i], wsPath);
           if (!sanitized.safe) {
-            log.warn(`[SECURITY] /yt blocked response chunk ${i}`);
+            log.warn(`[SECURITY] /yt blocked response chunk ${i} — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
             if (i === 0) await interaction.editReply('Response blocked: contained restricted information.');
             break;
           }
@@ -594,7 +594,7 @@ function setupEventHandlers() {
       if (result) {
         const sanitized = sanitizeOutput(result.reply, wsPath);
         if (!sanitized.safe) {
-          log.warn(`[SECURITY] Blocked command reply — infrastructure leak detected`);
+          log.warn(`[SECURITY] Blocked command reply — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
           await message.channel.send('Response blocked: contained restricted information.');
           return;
         }
@@ -947,7 +947,7 @@ function setupEventHandlers() {
       for (let i = 0; i < chunks.length; i++) {
         const sanitized = sanitizeOutput(chunks[i], wsPath);
         if (!sanitized.safe) {
-          log.warn(`[SECURITY] Blocked response chunk ${i} — infrastructure leak detected`);
+          log.warn(`[SECURITY] Blocked response chunk ${i} — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
           await message.channel.send('Response blocked: contained restricted information.');
           break;
         }
