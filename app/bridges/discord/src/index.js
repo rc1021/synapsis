@@ -469,7 +469,7 @@ function setupEventHandlers() {
 
         const shortId = sessionId.slice(0, 8);
         const fmtTokens = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
-        const limit = parseInt(process.env.COMPACT_THRESHOLD || '80000', 10);
+        const limit = parseInt(process.env.COMPACT_THRESHOLD || '180000', 10);
         const pct = ((result.inputTokens / limit) * 100).toFixed(1);
         const tokenInfo = `⛁ ${fmtTokens(result.inputTokens)} (${pct}%)`;
         const withFooter = responseText + `\n\n-# ⎔ ${shortId} · ${tokenInfo}`;
@@ -939,7 +939,7 @@ function setupEventHandlers() {
 
       const shortId = sessionId.slice(0, 8);
       const fmtTokens = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
-      const limit = parseInt(process.env.COMPACT_THRESHOLD || '80000', 10);
+      const limit = parseInt(process.env.COMPACT_THRESHOLD || '180000', 10);
       const pct = ((result.inputTokens / limit) * 100).toFixed(1);
       const tokenInfo = `⛁ ${fmtTokens(result.inputTokens)} (${pct}%)`;
       const withFooter = responseText + `\n\n-# ⎔ ${shortId} · ${tokenInfo}`;
