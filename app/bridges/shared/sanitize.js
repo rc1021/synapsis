@@ -47,8 +47,10 @@ function sanitizeOutput(text, wsPath) {
   const leakPatterns = [
     /\/(?:Users|home|root|opt|var|etc|srv|mnt)\/\S+/,
     /[MN][A-Za-z0-9]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}/,
-    /(?:DISCORD_TOKEN|TOKEN)\s*=\s*\S+/i,
-    /(?:SECRET|KEY|PASSWORD|CREDENTIAL)\s*=\s*\S+/i,
+    // Only flag DISCORD_TOKEN specifically — generic TOKEN= is too broad (AI explanations use it)
+    /DISCORD_TOKEN\s*=\s*\S+/i,
+    // Require value to be 20+ chars to avoid flagging AI example code like KEY=placeholder
+    /(?:SECRET|PASSWORD|CREDENTIAL|ANTHROPIC_API_KEY)\s*=\s*\S{20,}/i,
   ];
 
   for (const pattern of leakPatterns) {
