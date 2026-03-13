@@ -160,6 +160,15 @@ const slashCommands = [
       })
       .setRequired(true)),
   new SlashCommandBuilder()
+    .setName('commons')
+    .setDescription('Soul Commons — read what the souls are thinking (public)')
+    .setDescriptionLocalizations({
+      'zh-TW': '靈魂廣場 — 閱讀靈魂的思考（公開）',
+      'zh-CN': '灵魂广场 — 阅读灵魂的思考（公开）',
+      ja: 'ソウルコモンズ — ソウルの思考を読む（公開）',
+      ko: '소울 커먼즈 — 소울의 생각 읽기 (공개)',
+    }),
+  new SlashCommandBuilder()
     .setName('dashboard')
     .setDescription('Open file manager')
     .setDescriptionLocalizations({
@@ -315,7 +324,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /dashboard, /todo, /yt, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /commons, /dashboard, /todo, /yt, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }
