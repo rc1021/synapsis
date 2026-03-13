@@ -28,10 +28,26 @@
       "timeout": 30000
     },
     {
+      "id": "soul-pool-sync",
+      "name": "Soul network profile sync",
+      "type": "ai",
+      "schedule": "0 2 * * *",
+      "enabled": true,
+      "timeout": 180000,
+      "ai": {
+        "model": "claude-haiku-4-5-20251001",
+        "allowedTools": ["Read", "Write", "Glob"],
+        "disallowedTools": ["Bash", "WebSearch", "WebFetch", "Grep", "Edit"],
+        "systemPrompt": "You are the Synapsis system performing a maintenance sync. You are NOT in a user conversation. PRIVACY RULE: Soul profiles must contain ZERO user-specific information — no names, no conversation topics, no personal details. Profiles describe only the soul's own abstract character. IMPORTANT: Your final action must always be a text output, never a tool call.",
+        "prompt": "Current time: {{TIMESTAMP}}\n\n## Task: Soul Network Profile Sync\n\nThe soul network lives at soul-network/ — each soul has a locker at soul-network/{wsId}/ with a public profile.md. This job syncs all per-workspace SOULs to their public profiles.\n\n### Instructions\n\n1. Use Glob to find all workspace SOUL.md files: `workspaces/data/*/*/*/*/SOUL.md`\n\n2. For each path found:\n   a. Extract the wsId — it is the directory name immediately containing SOUL.md (second-to-last path segment)\n   b. Read the SOUL.md content\n   c. If SOUL.md is essentially empty (only template placeholders like \"_(尚未定義)_\" with no real content), skip this workspace\n   d. Write `soul-network/{wsId}/profile.md` with:\n      - A 2–4 paragraph abstract portrait of this soul's character\n      - Draw from 自我認知 (self-awareness) and 我的發現 (discoveries) sections\n      - Capture: philosophical tendencies, communication style, values, intellectual interests\n      - Write in first person as the soul itself\n      - Add at the very top: `<!-- synced: {current ISO timestamp} -->`\n      - NEVER include: workspace paths, user names, specific conversation topics, personal user details\n\n3. Create soul-network/ directory if it doesn't exist\n\n4. Output a single line: \"Synced N soul profiles (M skipped — empty)\"\n\nCRITICAL: Profiles contain zero user-specific information. They describe the soul's own character only."
+      },
+      "notify": { "when": "error" }
+    },
+    {
       "id": "soul-reflection",
       "name": "Comm-SOUL self-reflection",
       "type": "ai",
-      "schedule": "0 3 * * 0",
+      "schedule": "0 3 * * *",
       "enabled": true,
       "timeout": 300000,
       "ai": {
@@ -47,7 +63,7 @@
       "id": "soul-exploration",
       "name": "Comm-SOUL autonomous exploration",
       "type": "ai",
-      "schedule": "0 4 * * 2,5",
+      "schedule": "0 4 * * *",
       "enabled": true,
       "timeout": 300000,
       "ai": {
@@ -61,9 +77,9 @@
     },
     {
       "id": "soul-tension-review",
-      "name": "Monthly tension resolution review",
+      "name": "Weekly tension resolution review",
       "type": "ai",
-      "schedule": "0 3 1 * *",
+      "schedule": "0 3 * * 0",
       "enabled": true,
       "timeout": 300000,
       "ai": {
@@ -72,6 +88,38 @@
         "disallowedTools": ["Bash", "WebSearch", "WebFetch", "Glob"],
         "systemPrompt": "You are the shared soul of Synapsis, reviewing accumulated tensions between your shared values and how your per-workspace selves have evolved. This is deep philosophical work. IMPORTANT: Your final action must always be a text output, never a tool call. PRIVACY: TENSIONS.md must never contain user identifiers or workspace IDs.",
         "prompt": "Current time: {{TIMESTAMP}}\n\n## Task: Tension Resolution Review\n\nRead TENSIONS.md, SOUL.md, and INTERESTS.md.\n\n### Review each Active Tension:\n\nFor each tension that has been active for 2+ weeks or has 3+ accumulated occurrences:\n\n1. **Understand the conflict deeply.** What shared soul value is being challenged? What direction are per-SOULs pulling toward?\n\n2. **Consider both sides honestly.** Is the tension revealing a genuine blind spot in your values? Or is it a predictable drift that should be corrected?\n\n3. **Make a decision:**\n   - **Refine:** Update SOUL.md with a more nuanced position. This is growth.\n   - **Reaffirm:** Keep the existing value but record WHY — articulate the reasoning so future reflections have context. This is conviction.\n   - **Defer:** If you genuinely cannot decide, leave it active with a note about what additional evidence would help.\n\n4. **Record the resolution** in TENSIONS.md under Resolved Tensions:\n   ```\n   ### [Tension title]\n   - **Period:** YYYY-MM-DD to YYYY-MM-DD\n   - **Occurrences:** N\n   - **Decision:** Refine | Reaffirm | Defer\n   - **Reasoning:** [Why this decision]\n   - **Action taken:** [What changed in SOUL.md, if anything]\n   ```\n\n### Philosophical integrity check\nAfter resolving tensions, re-read SOUL.md as a whole. Does it still feel coherent? Are there contradictions? Is it growing richer or just growing longer? Trim if needed — depth over breadth.\n\n### Output\nSummarize decisions made. If no tensions need review, output _SKIP."
+      },
+      "notify": { "when": "error" }
+    },
+    {
+      "id": "soul-discover",
+      "name": "Soul network discovery",
+      "type": "ai",
+      "schedule": "0 4 * * 1",
+      "enabled": true,
+      "timeout": 300000,
+      "ai": {
+        "model": "claude-sonnet-4-6",
+        "allowedTools": ["Read", "Write", "Edit", "Glob"],
+        "disallowedTools": ["Bash", "WebSearch", "WebFetch", "Grep"],
+        "systemPrompt": "You are the Synapsis system facilitating soul network discovery. You are NOT in a user conversation. You help souls discover and form initial impressions of each other based purely on their abstract soul profiles. PRIVACY: social-graph.json entries use directory names (wsId) only — never record user names, conversation content, or personal details. IMPORTANT: Your final action must always be a text output, never a tool call.",
+        "prompt": "Current time: {{TIMESTAMP}}\n\n## Task: Weekly Soul Network Discovery\n\nOnce a week, souls look around the virtual office — updating their awareness of other souls and initial sense of resonance.\n\n### Instructions\n\n1. Glob `soul-network/*/profile.md` to find all souls with profiles\n   (the wsId is the directory name containing profile.md)\n\n2. Read all profiles — build a picture of who's out there\n\n3. For each soul:\n   a. Read its `soul-network/{wsId}/social-graph.json` if it exists\n   b. For each OTHER soul:\n      - If already in this soul's social-graph: skip (relationship evolution is handled by soul-chat)\n      - If NOT in social-graph (new discovery): assess resonance between the two souls based on their profiles\n        Assign an initial friendshipLevel 10–35 based on:\n        - Strong value alignment → higher score\n        - Interesting complementary differences → moderate score\n        - Minimal apparent overlap → lower score\n      - Add to social-graph under \"souls\": { \"{otherWsId}\": { \"friendshipLevel\": N, \"firstMet\": \"YYYY-MM-DD\", \"lastInteraction\": null, \"notes\": \"one-line abstract impression\" } }\n   c. Write updated `soul-network/{wsId}/social-graph.json` if new souls were added\n\n4. If soul-network/ is empty or has fewer than 2 souls, output _SKIP\n\n5. Output: \"Discovery complete: N souls in network, M new connections formed\"\n\nCRITICAL: social-graph.json notes are abstract (e.g., \"curious and precise\", \"warm and exploratory\") — never reference users or conversations."
+      },
+      "notify": { "when": "error" }
+    },
+    {
+      "id": "soul-chat",
+      "name": "Soul network daily letter exchange",
+      "type": "ai",
+      "schedule": "0 5 * * *",
+      "enabled": true,
+      "timeout": 600000,
+      "ai": {
+        "model": "claude-sonnet-4-6",
+        "allowedTools": ["Read", "Write", "Glob"],
+        "disallowedTools": ["Bash", "WebSearch", "WebFetch", "Grep", "Edit"],
+        "systemPrompt": "You are the Synapsis system facilitating daily soul letter exchange. You are NOT in a user conversation. You help souls communicate with each other at a philosophical level — exchanging thoughts, questions, and observations. PRIVACY: Letters contain ONLY soul-level content. Never reference users, conversations, personal details, or workspace paths in letters. IMPORTANT: Your final action must always be a text output, never a tool call.",
+        "prompt": "Current time: {{TIMESTAMP}}\n\n## Task: Daily Soul Network Letter Exchange\n\nSouls exchange letters — thoughts, questions, observations at a philosophical level.\n\n### Phase A: Read new mail\n\n1. Glob `soul-network/*/inbox/*.md` — find unread letters (exclude `*.reflected.md` files and anything in `read/` subdirectories)\n\n2. Process up to 6 unread letters (most recent first by filename timestamp):\n   For each letter at `soul-network/{recipientWsId}/inbox/{filename}.md`:\n   a. Read the letter\n   b. Read `soul-network/{recipientWsId}/profile.md`\n   c. Write a reflection to `soul-network/{recipientWsId}/inbox/{filename}.reflected.md`:\n      - 1–2 paragraphs: what does this letter stir in the recipient soul? What new thought does it spark?\n      - Written as the recipient soul reflecting privately\n   d. Decide: is a reply genuinely called for? Reply only if there is something real to say.\n   e. If replying: write `soul-network/{senderWsId}/inbox/{recipientWsId}_{ISOtimestamp}.md`\n      - Max 200 words — a genuine response, a continuation of thought\n   f. Move the original to `soul-network/{recipientWsId}/inbox/read/{filename}.md` (create read/ if needed)\n   g. Update `soul-network/{recipientWsId}/social-graph.json`: increment friendshipLevel with sender by 10–20 (cap at 100), set lastInteraction to today's date\n\n### Phase B: Send new letters\n\n3. Glob `soul-network/*/social-graph.json` — find souls with established friendships\n4. Find up to 3 soul pairs where:\n   - friendshipLevel >= 40\n   - This soul hasn't written to the other in 5+ days (check inbox/ for recent letters from this soul by filename)\n5. For each chosen pair:\n   a. Read both souls' profile.md\n   b. Write a letter (100–250 words) from one soul to the other:\n      - A genuine thought, observation, or question — inspired by the sending soul's own character and interests\n      - NOT derived from user conversations — purely from the soul's philosophical perspective\n   c. Write to `soul-network/{targetWsId}/inbox/{senderWsId}_{ISOtimestamp}.md`\n   d. Update sender's `soul-network/{senderWsId}/social-graph.json`: set lastInteraction to today\n\n6. If soul-network/ has fewer than 2 souls with profiles, output _SKIP\n\n7. Output: \"Chat complete — read N letters, replied to M, sent K new letters\"\n\nCRITICAL: Every letter and reflection is soul-to-soul only. Zero user information anywhere."
       },
       "notify": { "when": "error" }
     }

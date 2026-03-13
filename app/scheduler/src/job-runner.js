@@ -16,6 +16,8 @@ const SOUL_REFLECTION_STATE_PATH = join(__dirname, '..', '..', '.soul-reflection
 
 const PROJECT_DIR = process.env.PROJECT_DIR || resolve(join(__dirname, '../..'));
 const SHARED_SOUL_PATH = join(__dirname, '..', '..', 'SOUL.md');
+const TENSIONS_PATH = join(PROJECT_DIR, 'TENSIONS.md');
+const SOUL_NETWORK_DIR = join(PROJECT_DIR, 'soul-network');
 
 let _sharedSoul = '';
 try {
@@ -104,6 +106,23 @@ function simpleDiff(oldText, newText) {
     }
   }
   return added;
+}
+
+/**
+ * Check if TENSIONS.md has any active (unresolved) tensions.
+ * Returns false if file missing, empty, or only has template placeholder text.
+ */
+function hasActiveTensions() {
+  try {
+    if (!fs.existsSync(TENSIONS_PATH)) return false;
+    const content = fs.readFileSync(TENSIONS_PATH, 'utf-8');
+    const match = content.match(/## Active Tensions\n([\s\S]*?)(?=\n## |\n---|\s*$)/);
+    if (!match) return false;
+    const body = match[1].trim();
+    return body.length > 0 && !body.startsWith('_(');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -228,7 +247,8 @@ function templateReplace(str, job) {
     result = result.replace(/\{\{TALK_HISTORY\}\}/g, job._talkHistory);
   }
   if (result.includes('{{CHANGED_SOULS}}')) {
-    result = result.replace(/\{\{CHANGED_SOULS\}\}/g, collectChangedSouls());
+    const souls = job._cachedChangedSouls || collectChangedSouls();
+    result = result.replace(/\{\{CHANGED_SOULS\}\}/g, souls);
   }
   return result;
 }
@@ -359,6 +379,16 @@ async function runJob(job) {
       if (job.type === 'shell') {
         output = await runShell(job);
       } else if (job.type === 'ai' || job.type === 'claude') {
+        // Pre-flight for soul-reflection: skip AI call if nothing to reflect on
+        if (job.id === 'soul-reflection' && attempt === 0) {
+          const changedSouls = collectChangedSouls();
+          job._cachedChangedSouls = changedSouls;
+          if (changedSouls.startsWith('(No per-SOUL changes') && !hasActiveTensions()) {
+            log.info(`Job ${job.id}: pre-flight skipped — no soul changes, no active tensions`);
+            output = '_SKIP';
+            break;
+          }
+        }
         output = await runAI(job);
       } else {
         throw new Error(`Unknown job type: ${job.type}`);
