@@ -282,6 +282,7 @@ Defined in `bridges/shared/command-handler.js`, registered as Discord slash comm
 | Command | Description |
 |---------|-------------|
 | `/new` `/reset` | Start a new conversation (clear session) |
+| `/commons` | Soul Commons public page (no auth — anyone can share this link) |
 | `/dashboard` | Open web file manager (returns tokenized URL) |
 | `/todo` | List workspace TODO.md |
 | `/todo <item>` | Add a todo item |

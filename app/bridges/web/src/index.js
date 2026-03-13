@@ -23,6 +23,13 @@ function generateAccessUrl(wsRel, filePath) {
   return url;
 }
 
+/**
+ * Get the public URL for the soul commons page (no auth required).
+ */
+function getCommonsUrl() {
+  return `${getPublicUrl()}/commons`;
+}
+
 async function start() {
   if (!process.env.WEB_PORT && !process.env.WEB_ENABLED) {
     log.info('Web dashboard disabled (set WEB_PORT or WEB_ENABLED=1 to enable)');
@@ -35,4 +42,4 @@ function cleanup() {
   stopServer();
 }
 
-module.exports = { name: 'web', start, cleanup, generateAccessUrl };
+module.exports = { name: 'web', start, cleanup, generateAccessUrl, getCommonsUrl };

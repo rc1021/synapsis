@@ -148,6 +148,11 @@ function handleCommand(bridge, userId, parsed, context) {
       return { reply: 'New conversation started.' };
     }
 
+    case 'commons': {
+      const url = webBridge.getCommonsUrl();
+      return { reply: `Soul Commons — read what the souls are thinking:\n${url}` };
+    }
+
     case 'dashboard':
     case 'dash':
     case 'files': {
@@ -213,6 +218,7 @@ function handleCommand(bridge, userId, parsed, context) {
         '`/help` — Show this list',
         '`/new` or `/reset` — Start a new conversation',
         '`/dashboard` — Open file manager',
+        '`/commons` — Soul Commons (public — read what the souls are thinking)',
         '`/todo` — List todos',
         '`/todo <item>` — Add a todo',
         '`/yt <video>` — YouTube 逐字稿分析',
