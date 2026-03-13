@@ -40,6 +40,10 @@ const MIME_TYPES = {
   '.pdf': 'application/pdf',
 };
 
+const PROJECT_DIR = process.env.PROJECT_DIR || path.resolve(path.join(__dirname, '..', '..', '..'));
+const SOUL_NETWORK_DIR = path.join(PROJECT_DIR, 'soul-network');
+const STANDALONE_SOULS_FILE = path.join(PROJECT_DIR, 'app', 'standalone-souls', 'souls.json');
+
 let server = null;
 
 // --- Helpers ---
@@ -304,6 +308,110 @@ function handleDelete(req, res, params) {
   }
 }
 
+/**
+ * Parse a commons post file.
+ * Returns { postedAt, tags, content } or null if invalid.
+ */
+function parseCommonsPost(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const headerMatch = raw.match(/^<!--\s*posted:\s*([^|]+)\|?\s*tags?:\s*([^-]+?)\s*-->/);
+    if (!headerMatch) return null;
+    const postedAt = headerMatch[1].trim();
+    const tags = headerMatch[2].split(',').map(t => t.trim()).filter(Boolean);
+    const content = raw.replace(/^<!--[\s\S]*?-->/, '').trim();
+    return { postedAt, tags, content };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load standalone soul name map: { soulId -> name }
+ */
+function loadSoulNames() {
+  try {
+    const data = JSON.parse(fs.readFileSync(STANDALONE_SOULS_FILE, 'utf-8'));
+    const map = {};
+    for (const soul of (data.souls || [])) {
+      map[soul.id] = soul.name;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function handleCommonsAPI(req, res) {
+  try {
+    if (!fs.existsSync(SOUL_NETWORK_DIR)) {
+      return send(res, 200, { posts: [], total: 0 });
+    }
+
+    const soulNames = loadSoulNames();
+    const posts = [];
+
+    // Scan all soul directories for inbox — actually scan commons/
+    const commonsDir = path.join(SOUL_NETWORK_DIR, 'commons');
+    if (!fs.existsSync(commonsDir)) {
+      return send(res, 200, { posts: [], total: 0 });
+    }
+
+    for (const name of fs.readdirSync(commonsDir)) {
+      // Skip non-.md files, reflected files, archive dir
+      if (!name.endsWith('.md')) continue;
+      if (name.includes('.reflected.')) continue;
+      if (name === 'archive') continue;
+
+      const filePath = path.join(commonsDir, name);
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) continue;
+
+      // Filename format: {soulId}_{ISOtimestamp}.md
+      const nameWithout = name.replace(/\.md$/, '');
+      const lastUnderscore = nameWithout.lastIndexOf('_');
+      if (lastUnderscore === -1) continue;
+      const soulId = nameWithout.slice(0, lastUnderscore);
+
+      const parsed = parseCommonsPost(filePath);
+      if (!parsed) continue;
+
+      // Determine display name
+      const isStandalone = soulId.startsWith('s-');
+      const displayName = isStandalone
+        ? (soulNames[soulId] || soulId)
+        : `Soul ${soulId.slice(0, 6)}`;
+
+      posts.push({
+        id: nameWithout,
+        soulId,
+        displayName,
+        isStandalone,
+        postedAt: parsed.postedAt,
+        tags: parsed.tags,
+        content: parsed.content,
+      });
+    }
+
+    // Sort newest first
+    posts.sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt));
+
+    send(res, 200, { posts, total: posts.length });
+  } catch (err) {
+    log.error(`Commons API error: ${err.message}`);
+    send(res, 500, { error: 'Server error' });
+  }
+}
+
+function handleCommonsPage(req, res) {
+  const commonsHtml = path.join(STATIC_DIR, 'commons.html');
+  if (fs.existsSync(commonsHtml)) {
+    sendFile(res, commonsHtml);
+  } else {
+    send(res, 404, { error: 'Commons page not found' }, 'text/plain');
+  }
+}
+
 function handleStatic(req, res, pathname) {
   // Serve static files from static/ directory
   const safeName = path.basename(pathname);
@@ -334,6 +442,14 @@ function startServer() {
     const method = req.method;
 
     try {
+      // Public soul commons (no auth required)
+      if (method === 'GET' && pathname === '/commons') {
+        return handleCommonsPage(req, res);
+      }
+      if (method === 'GET' && pathname === '/api/commons') {
+        return handleCommonsAPI(req, res);
+      }
+
       // Dashboard entry (token exchange)
       if (method === 'GET' && pathname === '/dash') {
         return handleDash(req, res, params);
