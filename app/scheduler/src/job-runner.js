@@ -153,13 +153,20 @@ function collectChangedSouls() {
   const nextSnapshots = {};
   let totalUnchanged = 0;
 
-  // Use a stable anonymous index (not workspace ID) for snapshot keys
-  const wsDirs = fs.readdirSync(dataDir).sort();
-  for (let i = 0; i < wsDirs.length; i++) {
-    const wsDir = wsDirs[i];
-    const soulPath = join(dataDir, wsDir, 'SOUL.md');
-    // Use a hash of wsDir as anonymous key (not the wsDir itself, for privacy)
-    const anonKey = crypto.createHash('sha256').update(wsDir).digest('hex').slice(0, 12);
+  // Find all SOUL.md files under the sharded workspace structure:
+  // workspaces/data/{2c}/{2c}/{2c}/{2c}/{fullWsId}/SOUL.md
+  const { execSync } = require('child_process');
+  let soulPaths = [];
+  try {
+    const found = execSync(`find "${dataDir}" -name "SOUL.md" -type f 2>/dev/null`, { encoding: 'utf-8', timeout: 10000 }).trim();
+    soulPaths = found ? found.split('\n').filter(Boolean).sort() : [];
+  } catch {
+    soulPaths = [];
+  }
+
+  for (const soulPath of soulPaths) {
+    // Use a hash of the path as anonymous key (not the wsDir itself, for privacy)
+    const anonKey = crypto.createHash('sha256').update(soulPath).digest('hex').slice(0, 12);
 
     try {
       const stat = fs.statSync(soulPath);
