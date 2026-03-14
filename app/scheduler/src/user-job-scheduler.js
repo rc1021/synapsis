@@ -225,7 +225,7 @@ class UserJobScheduler {
         const wsId = path.basename(wsDir);
         const jobs = this._loadUserJobs(filePath);
         totalJobs += jobs.length;
-        this._registerJobs(wsId, jobs);
+        this._registerJobs(wsId, wsDir, jobs);
       }
 
       log.info(`Rebuilt time buckets: ${files.length} workspaces, ${totalJobs} jobs`);
@@ -241,7 +241,7 @@ class UserJobScheduler {
 
     const jobsPath = path.join(wsAbsPath, 'jobs.json');
     const jobs = this._loadUserJobs(jobsPath);
-    this._registerJobs(wsId, jobs);
+    this._registerJobs(wsId, wsAbsPath, jobs);
 
     log.info(`Rebuilt buckets for ${wsId}: ${jobs.length} jobs`);
   }
@@ -258,21 +258,22 @@ class UserJobScheduler {
     }
   }
 
-  _registerJobs(wsId, jobs) {
+  _registerJobs(wsId, wsDir, jobs) {
+    const tz = this._getUserTimezone(wsDir);
     for (const job of jobs) {
       if (!job.schedule || !cron.validate(job.schedule)) {
         log.warn(`User job ${job.id} (${wsId}): invalid schedule "${job.schedule}"`);
         continue;
       }
 
-      const nextTime = this._getNextCronTime(job.schedule);
+      const nextTime = this._getNextCronTime(job.schedule, tz);
       if (!nextTime) continue;
 
       this._writeToBucket(nextTime, wsId, job.id, job.priority || 'normal');
     }
   }
 
-  _getNextCronTime(schedule) {
+  _getNextCronTime(schedule, tz) {
     try {
       const now = new Date();
 
@@ -280,7 +281,7 @@ class UserJobScheduler {
         const candidate = new Date(now.getTime() + i * 60000);
         candidate.setSeconds(0, 0);
 
-        if (this._matchesCron(schedule, candidate)) {
+        if (this._matchesCron(schedule, candidate, tz)) {
           return candidate;
         }
       }
@@ -290,17 +291,56 @@ class UserJobScheduler {
     }
   }
 
-  _matchesCron(schedule, date) {
+  /**
+   * Extract date/time components from a Date in a given IANA timezone.
+   */
+  _getDatePartsInTimezone(date, tz) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+      weekday: 'short',
+      hour12: false,
+    }).formatToParts(date);
+
+    const get = (t) => parseInt(parts.find(p => p.type === t)?.value ?? '0', 10);
+    let hours = get('hour');
+    if (hours === 24) hours = 0; // midnight edge case in some locales
+
+    const WEEKDAYS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dowStr = parts.find(p => p.type === 'weekday')?.value?.slice(0, 3) ?? 'Sun';
+
+    return {
+      minutes: get('minute'),
+      hours,
+      dayOfMonth: get('day'),
+      month: get('month'),
+      dayOfWeek: WEEKDAYS[dowStr] ?? 0,
+    };
+  }
+
+  _matchesCron(schedule, date, tz) {
     const parts = schedule.split(/\s+/);
     if (parts.length < 5) return false;
 
     const [minP, hourP, domP, monP, dowP] = parts;
 
-    return this._matchField(minP, date.getMinutes(), 0, 59) &&
-           this._matchField(hourP, date.getHours(), 0, 23) &&
-           this._matchField(domP, date.getDate(), 1, 31) &&
-           this._matchField(monP, date.getMonth() + 1, 1, 12) &&
-           this._matchField(dowP, date.getDay(), 0, 6);
+    let minutes, hours, dayOfMonth, month, dayOfWeek;
+    if (tz) {
+      ({ minutes, hours, dayOfMonth, month, dayOfWeek } = this._getDatePartsInTimezone(date, tz));
+    } else {
+      minutes = date.getMinutes();
+      hours = date.getHours();
+      dayOfMonth = date.getDate();
+      month = date.getMonth() + 1;
+      dayOfWeek = date.getDay();
+    }
+
+    return this._matchField(minP, minutes, 0, 59) &&
+           this._matchField(hourP, hours, 0, 23) &&
+           this._matchField(domP, dayOfMonth, 1, 31) &&
+           this._matchField(monP, month, 1, 12) &&
+           this._matchField(dowP, dayOfWeek, 0, 6);
   }
 
   _matchField(pattern, value, min, max) {
@@ -935,7 +975,8 @@ class UserJobScheduler {
       return; // don't register next bucket
     }
 
-    const nextTime = this._getNextCronTime(job.schedule);
+    const tz = this._getUserTimezone(wsAbsPath);
+    const nextTime = this._getNextCronTime(job.schedule, tz);
     if (nextTime) {
       this._writeToBucket(nextTime, wsId, jobId, job.priority || 'normal');
     }
