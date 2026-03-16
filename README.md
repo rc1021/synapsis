@@ -19,6 +19,7 @@ Synapsis gives your AI a persistent identity, memory, and the ability to reach o
 - **Remembers you** — each user gets a private workspace with memory, notes, and knowledge seeds that persist across conversations
 - **Grows with you** — automatically explores topics you care about, waters knowledge seeds, and shares discoveries
 - **Reaches out** — proactive check-ins, idle nudges, and onboarding conversations that feel like a real friend, not a notification
+- **File uploads** — send images, PDFs, Excel, or any file directly in chat; the AI reads and analyzes them natively
 - **Multi-channel** — Discord today, Telegram and WhatsApp planned
 - **Provider-agnostic** — swap AI backends with one env var: Claude API (default), extensible to Gemini API, OpenAI API, and more
 - **Multi-user** — each person gets their own sandboxed workspace with independent memory, seeds, and identity
@@ -116,6 +117,16 @@ If a user wants to use the same workspace from another platform (e.g. future Tel
 | `/share-code` | Generate invite code + server invite link |
 | `/bind-token` | Generate a cross-platform binding token |
 | `/bind <token>` | Bind this account to an existing workspace |
+
+**File uploads:**
+
+Drag any file into the chat and the AI will read and analyze it:
+- 🖼️ Images (jpg, png, gif, webp)
+- 📄 PDFs
+- 📊 Excel / CSV / data files
+- 📝 Any text file
+
+Files are saved to your workspace `uploads/` folder and automatically cleaned up after 10 minutes.
 
 > All command descriptions are localized — they appear in your Discord language (English, 繁體中文, 简体中文, 日本語, 한국어).
 

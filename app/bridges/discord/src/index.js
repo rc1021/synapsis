@@ -263,17 +263,25 @@ async function fetchReferencedContent(message) {
   }
 }
 
-async function fetchTextAttachments(message, uploadsDir) {
+/**
+ * Fetch all attachments from a Discord message and save them to disk.
+ * All file types (text, images, PDFs, Excel, etc.) are saved to uploads/.
+ * Returns a text annotation telling the AI where each file is and how to read it.
+ */
+async function fetchAttachments(message, uploadsDir) {
   if (!message.attachments.size) return '';
 
   fs.mkdirSync(uploadsDir, { recursive: true });
 
   const parts = [];
   const savedFiles = [];
+
   for (const [, att] of message.attachments) {
     const ext = (att.name || '').match(/\.[^.]+$/)?.[0]?.toLowerCase() || '';
     const isText = TEXT_EXTENSIONS.has(ext) || (att.contentType && att.contentType.startsWith('text/'));
-    if (!isText) continue;
+    const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
+    const isPdf = ext === '.pdf';
+
     if (att.size > MAX_ATTACHMENT_SIZE) {
       parts.push(`[Attachment "${att.name}" skipped: too large (${(att.size / 1024).toFixed(0)}KB, limit ${(MAX_ATTACHMENT_SIZE / 1000).toFixed(0)}KB)]`);
       continue;
@@ -293,7 +301,15 @@ async function fetchTextAttachments(message, uploadsDir) {
       savedFiles.push(filePath);
 
       const sizeKB = (att.size / 1024).toFixed(0);
-      parts.push(`[User uploaded file "${att.name}" (${sizeKB}KB) -> saved to uploads/${fileName} -- use the Read tool to read it]`);
+      if (isText) {
+        parts.push(`[User uploaded file "${att.name}" (${sizeKB}KB) -> saved to uploads/${fileName} -- use the Read tool to read it]`);
+      } else if (isImage) {
+        parts.push(`[User uploaded image "${att.name}" (${sizeKB}KB) -> saved to uploads/${fileName} -- use the Read tool to view it]`);
+      } else if (isPdf) {
+        parts.push(`[User uploaded PDF "${att.name}" (${sizeKB}KB) -> saved to uploads/${fileName} -- use the Read tool to read it]`);
+      } else {
+        parts.push(`[User uploaded file "${att.name}" (${sizeKB}KB) -> saved to uploads/${fileName} -- use appropriate tools to read it]`);
+      }
       log.info(`Attachment saved: ${filePath} (${sizeKB}KB)`);
     } catch (err) {
       log.warn(`Failed to fetch attachment ${att.name}: ${err.message}`);
@@ -649,8 +665,8 @@ function setupEventHandlers() {
     const refContext = await fetchReferencedContent(message);
     if (refContext) prompt = refContext + prompt;
 
-    // Append text attachment contents
-    const attachmentText = await fetchTextAttachments(message, uploadsDir);
+    // Fetch all attachments — save to disk, append annotation
+    const attachmentText = await fetchAttachments(message, uploadsDir);
     if (attachmentText) prompt += attachmentText;
 
     // Truncate overly long input

@@ -112,6 +112,7 @@ class ClaudeAPIProvider extends BaseProvider {
    */
   async _toolLoop(options, handle) {
     const client = this._getClient();
+
     const messages = [{ role: 'user', content: options.prompt }];
     const allText = [];
     let totalInput = 0;

@@ -114,8 +114,7 @@ def fetch_transcript_whisper(video_id, lang):
     """Fallback: download MP3 via yt-dlp, transcribe via Whisper, clean up."""
     # Check dependencies
     if not shutil.which('yt-dlp'):
-        print("錯誤: yt-dlp 未安裝", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("yt-dlp 未安裝")
 
     whisper_lang = lang or DEFAULT_LANG
 
@@ -137,8 +136,7 @@ def fetch_transcript_whisper(video_id, lang):
             capture_output=True, text=True, timeout=600,
         )
         if dl_result.returncode != 0:
-            print(f"yt-dlp 下載失敗: {dl_result.stderr}", file=sys.stderr)
-            sys.exit(1)
+            raise RuntimeError(f"yt-dlp 下載失敗: {dl_result.stderr.strip()}")
 
         # yt-dlp may add extension, find the actual file
         if not os.path.exists(mp3_path):
@@ -148,8 +146,7 @@ def fetch_transcript_whisper(video_id, lang):
                     break
 
         if not os.path.exists(mp3_path):
-            print("錯誤: MP3 下載後找不到檔案", file=sys.stderr)
-            sys.exit(1)
+            raise RuntimeError("MP3 下載後找不到檔案")
 
         # Step 2: Whisper transcribe
         print(f"語音轉文字中... (Whisper, lang={whisper_lang})", file=sys.stderr)
@@ -164,8 +161,7 @@ def fetch_transcript_whisper(video_id, lang):
             capture_output=True, text=True, timeout=1800,  # 30 min max
         )
         if whisper_result.returncode != 0:
-            print(f"Whisper 轉文字失敗: {whisper_result.stderr}", file=sys.stderr)
-            sys.exit(1)
+            raise RuntimeError(f"Whisper 轉文字失敗: {whisper_result.stderr.strip()}")
 
         # Find the .txt output
         txt_path = None
@@ -175,8 +171,7 @@ def fetch_transcript_whisper(video_id, lang):
                 break
 
         if not txt_path or not os.path.exists(txt_path):
-            print("錯誤: Whisper 輸出 .txt 找不到", file=sys.stderr)
-            sys.exit(1)
+            raise RuntimeError("Whisper 輸出 .txt 找不到")
 
         whisper_text = open(txt_path, 'r', encoding='utf-8').read().strip()
 
@@ -239,14 +234,21 @@ def main():
         sys.exit(0)
 
     # Try YouTube API first, fallback to Whisper
+    # Even if subtitles are listed but fail to download, always attempt audio transcription.
     lines = None
     try:
         lines, available = fetch_transcript_api(video_id, lang)
         print("使用 YouTube 字幕", file=sys.stderr)
     except Exception as e:
-        print(f"YouTube 字幕不可用 ({e})，改用 Whisper...", file=sys.stderr)
-        lines = fetch_transcript_whisper(video_id, lang)
-        print("使用 Whisper 語音轉文字", file=sys.stderr)
+        print(f"YouTube 字幕不可用 ({e})，改用 Whisper 音訊轉文字...", file=sys.stderr)
+        try:
+            lines = fetch_transcript_whisper(video_id, lang)
+            print("使用 Whisper 語音轉文字", file=sys.stderr)
+        except SystemExit:
+            raise
+        except Exception as whisper_err:
+            print(f"Whisper 也失敗 ({whisper_err})，無法取得逐字稿", file=sys.stderr)
+            sys.exit(1)
 
     content = '\n'.join(lines)
 
