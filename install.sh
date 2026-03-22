@@ -255,6 +255,20 @@ cd "$INSTALL_DIR/app"
 info "Installing Node.js dependencies"
 npm install --no-fund --no-audit
 
+info "Installing embedding tool dependencies"
+if npm install --no-fund --no-audit --prefix tools/embedding 2>&1; then
+  info "Embedding deps installed"
+else
+  warn "Embedding deps install failed — run 'npm install' in app/tools/embedding manually"
+fi
+
+info "Rebuilding semantic search index"
+if node tools/embedding/indexer.js --all 2>&1; then
+  info "Embedding index up to date"
+else
+  warn "Embedding index build failed — will retry on next daily sync (00:30)"
+fi
+
 info "Installing Python dependencies (youtube-transcript-api, openai-whisper)"
 if python3 -m pip install --break-system-packages --user youtube-transcript-api openai-whisper 2>&1; then
   info "Python dependencies installed"

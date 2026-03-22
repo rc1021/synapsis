@@ -3,6 +3,13 @@
     "puppeteer": {
       "command": "npx",
       "args": ["-y", "@anthropic-ai/mcp-server-puppeteer"]
+    },
+    "memory": {
+      "command": "node",
+      "args": ["__APP_DIR__/tools/embedding/mcp-server.js"],
+      "env": {
+        "WORKSPACE_DIR": "__WORKSPACE_DIR__"
+      }
     }
   }
 }

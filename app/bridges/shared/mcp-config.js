@@ -16,6 +16,7 @@ const log = createLogger('mcp-config', {
 });
 
 const SYSTEM_MCP_PATH = path.join(__dirname, '..', '..', 'mcp-system.json');
+const APP_DIR = path.join(__dirname, '..', '..');
 const MERGED_DIR = path.join(os.tmpdir(), 'synapsis-mcp');
 
 // Cache: wsPath → { mtime, configPath, toolPatterns }
@@ -77,6 +78,22 @@ function buildMcpConfig(wsPath) {
       ...wsConfig.mcpServers,
     },
   };
+
+  // Inject dynamic placeholders: __APP_DIR__ and __WORKSPACE_DIR__
+  // Servers that require __WORKSPACE_DIR__ are dropped when no workspace is available.
+  for (const [name, cfg] of Object.entries(merged.mcpServers)) {
+    const cfgStr = JSON.stringify(cfg);
+    if (cfgStr.includes('__WORKSPACE_DIR__') && !wsPath) {
+      delete merged.mcpServers[name];
+      continue;
+    }
+    if (cfgStr.includes('__APP_DIR__') || cfgStr.includes('__WORKSPACE_DIR__')) {
+      const replaced = cfgStr
+        .replace(/__APP_DIR__/g, APP_DIR.replace(/\\/g, '\\\\'))
+        .replace(/__WORKSPACE_DIR__/g, (wsPath || '').replace(/\\/g, '\\\\'));
+      merged.mcpServers[name] = JSON.parse(replaced);
+    }
+  }
 
   // Build tool patterns for allowedTools
   const toolPatterns = Object.keys(merged.mcpServers)

@@ -28,6 +28,17 @@
       "timeout": 30000
     },
     {
+      "id": "embedding-sync",
+      "name": "Rebuild per-workspace semantic search index",
+      "type": "shell",
+      "schedule": "30 0 * * *",
+      "enabled": true,
+      "shell": {
+        "command": "node tools/embedding/indexer.js --all"
+      },
+      "timeout": 300000
+    },
+    {
       "id": "standalone-souls-generate",
       "name": "Generate standalone indigenous souls (incremental)",
       "type": "ai",
