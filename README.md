@@ -108,7 +108,9 @@ If a user wants to use the same workspace from another platform (e.g. future Tel
 |---------|-------------|
 | `/help` | Show available commands |
 | `/new` or `/reset` | Start a new conversation (clear current session) |
+| `/search <query>` | Semantically search all your workspace notes |
 | `/dashboard` | Open workspace file manager (web UI) |
+| `/commons` | Soul Commons — public page of soul posts |
 | `/todo` | List your todos |
 | `/todo <item>` | Add a todo item |
 | `/yt <url>` | YouTube transcript analysis |
