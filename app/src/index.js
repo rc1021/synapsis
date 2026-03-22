@@ -31,6 +31,11 @@ async function main() {
     }
   }
 
+  // Run workspace migrations after all bridges are registered
+  // so notifications can be delivered via the correct bridge
+  const scheduler = channels.find(ch => ch.name === 'scheduler');
+  if (scheduler) scheduler.runMigrations();
+
   log.info('synapsis fully started');
 }
 

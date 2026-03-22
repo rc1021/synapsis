@@ -160,11 +160,13 @@ class UserJobScheduler {
     }
   }
 
-  start() {
-    // Run workspace migrations before starting
+  runMigrations() {
     this._migrateWorkspaces().catch(err => {
       log.error(`Workspace migration error: ${err.message}`);
     });
+  }
+
+  start() {
 
     // Initial scan: build time buckets for all user jobs
     this._rebuildAllBuckets();

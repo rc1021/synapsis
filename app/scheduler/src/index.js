@@ -128,4 +128,13 @@ function start() {
   log.info(`Scheduler running with ${scheduledTasks.length} system job(s)`);
 }
 
-module.exports = { name: 'scheduler', start, cleanup };
+/**
+ * Run workspace migrations. Must be called AFTER all bridges are registered
+ * so that notifyAllBindings can deliver messages via the correct bridge.
+ */
+function runMigrations() {
+  if (!userJobScheduler) return;
+  userJobScheduler.runMigrations();
+}
+
+module.exports = { name: 'scheduler', start, cleanup, runMigrations };
