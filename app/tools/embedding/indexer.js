@@ -158,16 +158,20 @@ async function main() {
 
   if (allFlag) {
     console.log('Indexing all workspaces...');
-    let entries;
+    // Workspaces are 5 levels deep: data/{s0}/{s1}/{s2}/{s3}/{wsId}/
+    // Use find to discover actual workspace dirs (contain SOUL.md or CLAUDE.md)
+    let wsDirs;
     try {
-      entries = await readdir(WORKSPACES_DIR, { withFileTypes: true });
+      const { execSync } = await import('node:child_process');
+      const result = execSync(
+        `find "${WORKSPACES_DIR}" -mindepth 5 -maxdepth 5 -type d 2>/dev/null`,
+        { encoding: 'utf-8', timeout: 30000 }
+      ).trim();
+      wsDirs = result ? result.split('\n').filter(Boolean) : [];
     } catch {
       console.log('No workspaces directory found.');
       return;
     }
-    const wsDirs = entries
-      .filter(e => e.isDirectory())
-      .map(e => join(WORKSPACES_DIR, e.name));
 
     if (wsDirs.length === 0) {
       console.log('No workspace directories found.');
@@ -179,9 +183,21 @@ async function main() {
     }
     console.log(`Done — ${wsDirs.length} workspace(s) indexed`);
   } else {
-    const wsDir = join(WORKSPACES_DIR, wsId);
+    // wsId may be a full shard path (9a/4e/9f/26/9a4e9f263e2fd88a) or bare wsId
+    // Try bare wsId via find first, then fall back to direct join
+    let wsDir = join(WORKSPACES_DIR, wsId);
     if (!existsSync(wsDir)) {
-      console.error(`Workspace not found: ${wsDir}`);
+      try {
+        const { execSync } = await import('node:child_process');
+        const found = execSync(
+          `find "${WORKSPACES_DIR}" -mindepth 5 -maxdepth 5 -type d -name "${wsId}" 2>/dev/null`,
+          { encoding: 'utf-8', timeout: 10000 }
+        ).trim();
+        if (found) wsDir = found.split('\n')[0];
+      } catch { /* fall through */ }
+    }
+    if (!existsSync(wsDir)) {
+      console.error(`Workspace not found: ${wsId}`);
       process.exit(1);
     }
     console.log(`Indexing workspace: ${wsId}`);
