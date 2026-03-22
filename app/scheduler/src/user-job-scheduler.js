@@ -122,17 +122,28 @@ class UserJobScheduler {
     const wsDirs = this._getAllWorkspaceDirs();
     for (const { wsId, wsDir } of wsDirs) {
       try {
-        const profile = wm.readProfile(wsDir);
-        if (!profile) continue;
+        let profile = wm.readProfile(wsDir);
+        if (!profile) {
+          // Legacy workspace created before profile.json was introduced — treat as v1.0.0
+          // Reconstruct bindings by scanning index files
+          const bindings = wm.getBindingsForWorkspace(wsDir);
+          profile = { createdAt: new Date().toISOString(), templateVersion: '1.0.0', bindings };
+          wm.writeProfile(wsDir, profile);
+          log.info(`Workspace ${wsId}: created missing profile.json (legacy, bindings: ${bindings.join(', ') || 'none'})`);
+        }
 
         const currentVersion = profile.templateVersion || '1.0.0';
         const pending = getPendingMigrations(currentVersion);
         if (!pending.length) continue;
 
+        // Wrap notifyAllBindings so migrations can call notifyAllBindings(message) directly
+        const notifyMigration = (message) =>
+          notifyAllBindings(wsDir, { id: 'migration', name: 'System Update' }, message, null);
+
         const ctx = {
           wsId, wsDir, profile, log, wm,
           templateDir: TEMPLATE_DIR,
-          notifyAllBindings,
+          notifyAllBindings: notifyMigration,
         };
 
         for (const { version, migrate } of pending) {

@@ -324,6 +324,37 @@ function listAllWorkspaces() {
   }
 }
 
+/**
+ * Reconstruct all bridge:userId bindings for a workspace by scanning index files.
+ * Used to populate profile.bindings for legacy workspaces created before profile.json.
+ *
+ * @param {string} wsAbsPath - Absolute workspace path
+ * @returns {string[]} bindings like ['discord:123456789']
+ */
+function getBindingsForWorkspace(wsAbsPath) {
+  const wsRelPath = path.relative(DATA_DIR, wsAbsPath);
+  const bindings = [];
+  try {
+    const result = execSync(
+      `find "${INDEX_DIR}" -type f -name '*.json' 2>/dev/null`,
+      { encoding: 'utf-8', timeout: 10000 }
+    ).trim();
+    if (!result) return bindings;
+    for (const file of result.split('\n').filter(Boolean)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+        if (data.w === wsRelPath) {
+          const rel = path.relative(INDEX_DIR, file);
+          const bridge = rel.split(path.sep)[0];
+          const userId = path.basename(file, '.json');
+          bindings.push(`${bridge}:${userId}`);
+        }
+      } catch { /* skip malformed */ }
+    }
+  } catch { /* skip */ }
+  return bindings;
+}
+
 // --- Talk history ---
 
 const TALK_HISTORY_FILE = 'talk-history.jsonl';
@@ -383,4 +414,5 @@ module.exports = {
   appendTalkHistory,
   userJobsPath,
   listAllWorkspaces,
+  getBindingsForWorkspace,
 };
