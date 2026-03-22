@@ -11,6 +11,7 @@ const wm = require('../../shared/workspace-manager');
 const { sanitizeOutput, isTextFile, TEXT_EXTENSIONS } = require('../../shared/sanitize');
 const engagement = require('../../shared/engagement');
 const webBridge = require('../../web/src/index');
+const { searchWorkspace } = require('../../shared/embedding-search');
 const log = require('./logger');
 
 const MAX_INPUT = 8000;
@@ -234,6 +235,25 @@ const slashCommands = [
         ko: '콘텐츠 검증 및 탐색 (팩트체크 + 노트)',
       })
       .setRequired(false)),
+  new SlashCommandBuilder()
+    .setName('search')
+    .setDescription('Semantically search your workspace notes')
+    .setDescriptionLocalizations({
+      'zh-TW': '語意搜尋 workspace 筆記',
+      'zh-CN': '语义搜索 workspace 笔记',
+      ja: 'ワークスペースのノートをセマンティック検索',
+      ko: '워크스페이스 노트 시맨틱 검색',
+    })
+    .addStringOption(opt => opt
+      .setName('query')
+      .setDescription('Search query')
+      .setDescriptionLocalizations({
+        'zh-TW': '搜尋關鍵字或描述',
+        'zh-CN': '搜索关键词或描述',
+        ja: '検索キーワードや説明',
+        ko: '검색 키워드 또는 설명',
+      })
+      .setRequired(true)),
 ];
 
 async function fetchReferencedContent(message) {
@@ -340,7 +360,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /commons, /dashboard, /todo, /yt, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }
@@ -533,6 +553,40 @@ function setupEventHandlers() {
         } catch {
           await interaction.followUp(errMsg).catch(() => {});
         }
+      }
+      return;
+    }
+
+    // --- /search: async semantic search over workspace embeddings ---
+    if (commandName === 'search') {
+      const query = interaction.options.getString('query');
+      const wsPath = wm.resolveWorkspace(bridge, userId);
+      if (!wsPath) {
+        await interaction.reply({ content: '你尚未註冊，請先使用 `/connection <邀請碼>` 註冊。', ephemeral: true });
+        return;
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      try {
+        const results = await searchWorkspace(wsPath, query);
+
+        if (results.length === 0) {
+          await interaction.editReply('沒有找到相關筆記。索引可能還在建立中，請稍後再試。');
+          return;
+        }
+
+        const lines = [`🔍 搜尋「${query}」— 找到 ${results.length} 筆\n`];
+        results.forEach((r, i) => {
+          const pct = Math.round(r.score * 100);
+          lines.push(`**${i + 1}. (${pct}%) ${r.title}**`);
+          lines.push(`　📄 \`${r.path}\``);
+        });
+
+        await interaction.editReply(lines.join('\n'));
+      } catch (err) {
+        log.error(`/search error for ${interaction.user.tag}:`, err.message);
+        await interaction.editReply('搜尋失敗，請稍後再試。');
       }
       return;
     }

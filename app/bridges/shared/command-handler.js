@@ -217,6 +217,7 @@ function handleCommand(bridge, userId, parsed, context) {
         '**Available commands:**',
         '`/help` — Show this list',
         '`/new` or `/reset` — Start a new conversation',
+        '`/search <query>` — 語意搜尋 workspace 所有筆記',
         '`/dashboard` — Open file manager',
         '`/commons` — Soul Commons (public — read what the souls are thinking)',
         '`/todo` — List todos',
