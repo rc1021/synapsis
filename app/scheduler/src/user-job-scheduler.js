@@ -149,8 +149,13 @@ class UserJobScheduler {
         for (const { version, migrate } of pending) {
           log.info(`Workspace ${wsId}: running migration ${version}`);
           await migrate(ctx);
+          // Save version after each migration so a mid-stream shutdown
+          // won't cause already-completed migrations to re-run on next start.
+          profile.templateVersion = version;
+          wm.writeProfile(wsDir, profile);
         }
 
+        // Final bump to CURRENT_TEMPLATE_VERSION (may be same as last migration)
         profile.templateVersion = CURRENT_TEMPLATE_VERSION;
         wm.writeProfile(wsDir, profile);
         log.info(`Workspace ${wsId} migrated to v${CURRENT_TEMPLATE_VERSION}`);
