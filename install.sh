@@ -237,6 +237,7 @@ if [ "$IS_UPDATE" = true ]; then
   info "Updating code (preserving user data)..."
   rsync -a --delete \
     --exclude '.env' \
+    --exclude '*.keys.json' \
     --exclude 'workspaces/' \
     --exclude 'logs/' \
     --exclude 'scheduler/markers/' \
