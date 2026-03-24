@@ -88,6 +88,7 @@ Service management:
 - `WEB_PORT` — Web dashboard port (set to enable, e.g. `3001`)
 - `WEB_PUBLIC_URL` — Full public URL for ngrok/tunnel (e.g. `https://xxx.ngrok-free.app`)
 - `NGROK_DOMAIN` — ngrok domain for auto-managed tunnel via `ctl.sh`
+- `GDRIVE_OAUTH_KEYS_PATH` — Path to `gcp-oauth.keys.json` (Web app OAuth credentials) for `/drive-connect`
 - `API_MAX_RETRIES` — Max retry attempts for transient API errors (default: 3)
 
 ## Architecture patterns
@@ -289,6 +290,7 @@ Defined in `bridges/shared/command-handler.js`, registered as Discord slash comm
 | `/todo <item>` | Add a todo item |
 | `/yt <video>` | Fetch YouTube transcript + AI summary |
 | `/yt <video> verify:true` | Transcript + verify & explore (fact-check + notes) |
+| `/drive-connect` | Connect Google Drive to workspace (OAuth) |
 | `/connection <code>` | Register with an invite code |
 | `/share-code` | Generate a 24hr invite code |
 | `/bind-token` | Generate a 5-min cross-platform binding token |

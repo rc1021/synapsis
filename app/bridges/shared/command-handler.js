@@ -6,6 +6,7 @@ const log = createLogger('commands', {
 const fs = require('fs');
 const wm = require('./workspace-manager');
 const webBridge = require('../web/src/index');
+const driveAuth = require('./drive-auth');
 
 const TODO_FILE = 'TODO.md';
 
@@ -212,6 +213,25 @@ function handleCommand(bridge, userId, parsed, context) {
       }
     }
 
+    case 'drive-connect':
+    case 'driveconnect': {
+      if (!isRegistered) {
+        return { reply: 'You must be registered to use this command.', ephemeral: true };
+      }
+      if (!driveAuth.isConfigured()) {
+        return { reply: 'Google Drive is not configured on this server. Contact the administrator.', ephemeral: true };
+      }
+      if (!process.env.WEB_PORT && !process.env.WEB_ENABLED) {
+        return { reply: 'Google Drive sync requires the web dashboard to be enabled (set WEB_PORT in .env).', ephemeral: true };
+      }
+      const wsRel = wm.readIndex(bridge, userId);
+      const url = driveAuth.getAuthUrl(wsRel);
+      return {
+        reply: `**Connect Google Drive** (link expires after use):\n${url}\n\nOpen the link in your browser to authorize. Once connected, ask your AI companion to manage or sync files to Drive.`,
+        ephemeral: true,
+      };
+    }
+
     case 'help': {
       const lines = [
         '**Available commands:**',
@@ -224,6 +244,7 @@ function handleCommand(bridge, userId, parsed, context) {
         '`/todo <item>` — Add a todo',
         '`/yt <video>` — YouTube 逐字稿分析',
         '`/yt <video> verify:true` — 逐字稿 + 驗證探索',
+        '`/drive-connect` — 連接 Google Drive',
         '`/connection <code>` — Register with an invite code',
         '`/share-code` — Generate a 24hr one-time invite code',
         '`/bind-token` — Generate a 5-min token for cross-platform binding',

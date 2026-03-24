@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('../../shared/logger');
 const auth = require('./auth');
+const driveAuth = require('../../shared/drive-auth');
 
 const log = createLogger('web', {
   logDir: process.env.LOG_DIR || path.join(__dirname, '..', '..', '..', 'logs'),
@@ -453,6 +454,34 @@ function startServer() {
       // Dashboard entry (token exchange)
       if (method === 'GET' && pathname === '/dash') {
         return handleDash(req, res, params);
+      }
+
+      // Google Drive OAuth callback
+      if (method === 'GET' && pathname === '/drive-auth/callback') {
+        const error = params.get('error');
+        if (error) {
+          send(res, 400, `<html><body><h2>Authorization cancelled</h2><p>${error}</p><p>You can close this tab.</p></body></html>`, 'text/html; charset=utf-8');
+          return;
+        }
+        const code = params.get('code');
+        const state = params.get('state');
+        if (!code || !state) {
+          send(res, 400, '<html><body><h2>Invalid callback</h2></body></html>', 'text/html; charset=utf-8');
+          return;
+        }
+        try {
+          await driveAuth.handleCallback(code, state);
+          send(res, 200, `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:500px;margin:80px auto;padding:0 20px;text-align:center}h2{color:#2d7a2d}</style></head><body>
+            <h2>✓ Google Drive Connected!</h2>
+            <p>Your workspace is now linked to Google Drive.</p>
+            <p>Ask your AI companion to sync or manage files — it has full Drive access.</p>
+            <p>You can close this tab.</p>
+          </body></html>`, 'text/html; charset=utf-8');
+        } catch (err) {
+          log.error(`Drive auth callback error: ${err.message}`);
+          send(res, 500, '<html><body><h2>Connection failed</h2><p>Please try again.</p></body></html>', 'text/html; charset=utf-8');
+        }
+        return;
       }
 
       // API routes

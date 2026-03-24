@@ -259,6 +259,13 @@ const slashCommands = [
       })
       .setRequired(false)),
   new SlashCommandBuilder()
+    .setName('drive-connect')
+    .setDescription('Connect Google Drive to your workspace')
+    .setDescriptionLocalizations({
+      'zh-TW': '連接 Google Drive 到你的 workspace',
+      'zh-CN': '连接 Google Drive 到你的 workspace',
+    }),
+  new SlashCommandBuilder()
     .setName('search')
     .setDescription('Semantically search your workspace notes')
     .setDescriptionLocalizations({
@@ -418,7 +425,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /pod, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /pod, /drive-connect, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }

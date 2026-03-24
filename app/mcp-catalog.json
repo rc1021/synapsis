@@ -13,6 +13,23 @@
       "setup_url": "https://console.cloud.google.com/apis/credentials",
       "tools_pattern": "mcp__google-calendar__*"
     },
+    "google-drive": {
+      "description": "Read/write Google Drive files and folders (Docs, Sheets, upload, download, search). Enables workspace-to-Drive sync as an Obsidian vault.",
+      "command": "npx",
+      "args": ["-y", "@piotr-agier/google-drive-mcp"],
+      "env": {
+        "GOOGLE_DRIVE_OAUTH_CREDENTIALS": "(required) Path to gcp-oauth.keys.json (OAuth 2.0 Desktop app credentials from Google Cloud Console)"
+      },
+      "setup": [
+        "1. Go to https://console.cloud.google.com/ → create a project",
+        "2. Enable: Drive API, Docs API, Sheets API, Slides API",
+        "3. Create OAuth 2.0 credentials → type 'Desktop app' → download JSON → save as gcp-oauth.keys.json",
+        "4. Run once to authorize: npx @piotr-agier/google-drive-mcp auth --credentials /path/to/gcp-oauth.keys.json",
+        "5. Add this server to your workspace .mcp.json with GOOGLE_DRIVE_OAUTH_CREDENTIALS pointing to that file"
+      ],
+      "setup_url": "https://console.cloud.google.com/apis/credentials",
+      "tools_pattern": "mcp__google-drive__*"
+    },
     "notion": {
       "description": "Read/search Notion pages and databases",
       "command": "npx",
