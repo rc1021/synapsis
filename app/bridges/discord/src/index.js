@@ -236,6 +236,29 @@ const slashCommands = [
       })
       .setRequired(false)),
   new SlashCommandBuilder()
+    .setName('pod')
+    .setDescription('Fetch podcast transcript and analyze')
+    .setDescriptionLocalizations({
+      'zh-TW': '取得 Podcast 逐字稿並分析',
+      'zh-CN': '获取 Podcast 逐字稿并分析',
+    })
+    .addStringOption(opt => opt
+      .setName('url')
+      .setDescription('Podcast episode URL (Castbox, SoundOn, Apple Podcasts, etc.)')
+      .setDescriptionLocalizations({
+        'zh-TW': 'Podcast 集數網址（Castbox、SoundOn、Apple Podcasts 等）',
+        'zh-CN': 'Podcast 单集网址',
+      })
+      .setRequired(false))
+    .addBooleanOption(opt => opt
+      .setName('verify')
+      .setDescription('Verify & explore content (fact-check + notes)')
+      .setDescriptionLocalizations({
+        'zh-TW': '驗證且探索內容（事實查核 + 筆記）',
+        'zh-CN': '验证并探索内容（事实核查 + 笔记）',
+      })
+      .setRequired(false)),
+  new SlashCommandBuilder()
     .setName('search')
     .setDescription('Semantically search your workspace notes')
     .setDescriptionLocalizations({
@@ -360,7 +383,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /pod, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }
@@ -547,6 +570,177 @@ function setupEventHandlers() {
         log.info(`/yt complete for ${interaction.user.tag}: ${chunks.length} chunks`);
       } catch (err) {
         log.error(`/yt error for ${interaction.user.tag}: ${err.message}`);
+        const errMsg = `處理失敗: ${err.message.slice(0, 200)}`;
+        try {
+          await interaction.editReply(errMsg);
+        } catch {
+          await interaction.followUp(errMsg).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    // --- /pod: async handler (deferReply → podcast transcript via Whisper → AI) ---
+    if (commandName === 'pod') {
+      const podUrl = interaction.options.getString('url');
+      const podVerify = interaction.options.getBoolean('verify') || false;
+
+      // Help: no url arg
+      if (!podUrl) {
+        const helpLines = [
+          '**`/pod` — Podcast 逐字稿分析**',
+          '',
+          '用法:',
+          '`/pod url:<Podcast 集數網址>` — 下載逐字稿 + AI 摘要 + 自動存筆記',
+          '`/pod url:<URL> verify:true` — 同上 + WebSearch 事實查核',
+          '',
+          '支援平台: Castbox、SoundOn、Apple Podcasts 及所有 yt-dlp 支援的 Podcast 平台',
+          '',
+          '流程:',
+          '1. yt-dlp 下載音訊',
+          '2. Whisper 語音轉文字（逐字稿永久保留在 transcripts/）',
+          '3. AI 摘要 + 結構化筆記存到 notes/',
+        ];
+        await interaction.reply({ content: helpLines.join('\n'), ephemeral: true });
+        return;
+      }
+
+      // Must be registered
+      const wsPathPod = wm.resolveWorkspace(bridge, userId);
+      if (!wsPathPod) {
+        await interaction.reply({ content: '你尚未註冊，請先使用 `/connection <邀請碼>` 註冊。', ephemeral: true });
+        return;
+      }
+
+      await interaction.deferReply();
+
+      try {
+        const transcriptsDir = join(wsPathPod, 'transcripts');
+        fs.mkdirSync(transcriptsDir, { recursive: true });
+
+        const toolsDir = resolve(__dirname, '..', '..', '..', 'tools');
+        const scriptPath = join(toolsDir, 'pod-transcript.py');
+        const langArg = process.env.POD_DEFAULT_LANG || 'zh';
+
+        log.info(`/pod from ${interaction.user.tag}: url=${podUrl} verify=${podVerify}`);
+
+        const proc = await new Promise((resolveProc, rejectProc) => {
+          const child = require('child_process').spawn(
+            'python3', [scriptPath, podUrl, '--lang', langArg, '--output', transcriptsDir],
+            { timeout: 1800000 }, // 30 min max (podcast episodes can be long)
+          );
+          let stdout = '';
+          let stderr = '';
+          child.stdout.on('data', (d) => { stdout += d; });
+          child.stderr.on('data', (d) => { stderr += d; });
+          child.on('close', (code) => {
+            if (code === 0) resolveProc({ stdout: stdout.trim(), stderr: stderr.trim() });
+            else rejectProc(new Error(stderr.trim() || `pod-transcript.py exited with code ${code}`));
+          });
+          child.on('error', rejectProc);
+        });
+
+        const savedFilePath = proc.stdout;
+        if (!savedFilePath || !fs.existsSync(savedFilePath)) {
+          await interaction.editReply('逐字稿下載失敗：找不到輸出檔案。');
+          return;
+        }
+
+        const fileName = require('path').basename(savedFilePath);
+        log.info(`/pod transcript saved: ${savedFilePath}`);
+        if (proc.stderr) log.debug(`/pod stderr: ${proc.stderr}`);
+
+        const fileAnnotation = `[User requested Podcast transcript via /pod — file "${fileName}" saved to transcripts/${fileName} -- use the Read tool to read it]`;
+
+        let aiPrompt;
+        if (podVerify) {
+          const specPath = resolve(__dirname, '..', '..', '..', 'scheduler', 'specs', 'verify-explore-spec.md');
+          let specContent = '';
+          try {
+            specContent = fs.readFileSync(specPath, 'utf-8');
+          } catch {
+            log.warn('/pod verify: could not read verify-explore-spec.md');
+          }
+          aiPrompt = `[DM from ${interaction.user.username}]\n` +
+            `${fileAnnotation}\n\n` +
+            `用戶透過 /pod 指令請求「驗證且探索」這份 Podcast 逐字稿。\n\n` +
+            `請依照以下 spec 執行完整流程（內容分析 → 事實查核 → 領域邊界探索 → 整理筆記到 notes/），` +
+            `完成後回覆用戶整理摘要。使用 sub-agent (Agent tool) 執行。\n\n` +
+            `--- SPEC ---\n${specContent}`;
+        } else {
+          aiPrompt = `[DM from ${interaction.user.username}]\n` +
+            `${fileAnnotation}\n\n` +
+            `用戶透過 /pod 指令上傳了 Podcast 逐字稿，請：\n` +
+            `1. 閱讀逐字稿，回覆重點摘要（核心觀點、精彩段落、金句）\n` +
+            `2. 將結構化筆記（主題、重點、可行動事項）存到 notes/ 目錄下適當位置\n` +
+            `3. 如果逐字稿中有值得深挖的主題或概念（不超過 3 個），在回覆末尾列出，問用戶是否加進探索清單`;
+        }
+
+        const sessionsPod = getSessionStore(wsPathPod);
+        const keyPod = interaction.channel?.isDMBased()
+          ? `dm:${userId}`
+          : interaction.channel?.isThread()
+            ? `thread:${interaction.channelId}`
+            : `channel:${interaction.channelId}:${userId}`;
+
+        const existingSessionPod = sessionsPod.get(keyPod);
+        const isResumePod = !!existingSessionPod;
+        const sessionIdPod = sessionsPod.getOrCreate(keyPod);
+
+        const resultPod = await enqueue(aiPrompt, sessionIdPod, isResumePod, null, wsPathPod);
+
+        if (resultPod.inputTokens) {
+          sessionsPod.updateTokens(keyPod, resultPod.inputTokens);
+        }
+
+        let responseTextPod = resultPod.text || '(no response)';
+
+        const wsRelPod = wm.readIndex(bridge, userId);
+        if (wsRelPod) {
+          responseTextPod = responseTextPod.replace(/\[REQUEST_WEB_ACCESS\]/g, webBridge.generateAccessUrl(wsRelPod));
+          responseTextPod = responseTextPod.replace(/\[REQUEST_WEB_FILE:([^\]]+)\]/g, (_, filePath) => {
+            return webBridge.generateAccessUrl(wsRelPod, filePath.trim());
+          });
+        }
+
+        wm.appendTalkHistory(wsPathPod, `/pod ${podUrl}${podVerify ? ' verify:true' : ''}`, responseTextPod);
+
+        const outboxFilesPod = collectOutbox(wsPathPod);
+
+        const shortIdPod = sessionIdPod.slice(0, 8);
+        const fmtTokensPod = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+        const limitPod = parseInt(process.env.COMPACT_THRESHOLD || '180000', 10);
+        const pctPod = ((resultPod.inputTokens / limitPod) * 100).toFixed(1);
+        const tokenInfoPod = `⛁ ${fmtTokensPod(resultPod.inputTokens)} (${pctPod}%)`;
+        const withFooterPod = responseTextPod + `\n\n-# ⎔ ${shortIdPod} · ${tokenInfoPod}`;
+        const chunksPod = splitMessage(withFooterPod);
+
+        for (let i = 0; i < chunksPod.length; i++) {
+          const sanitized = sanitizeOutput(chunksPod[i], wsPathPod);
+          if (!sanitized.safe) {
+            log.warn(`[SECURITY] /pod blocked response chunk ${i} — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
+            if (i === 0) await interaction.editReply('Response blocked: contained restricted information.');
+            break;
+          }
+          const isLast = i === chunksPod.length - 1;
+          if (i === 0) {
+            if (isLast && outboxFilesPod.length) {
+              await interaction.editReply({ content: sanitized.text, files: outboxFilesPod });
+            } else {
+              await interaction.editReply(sanitized.text);
+            }
+          } else {
+            if (isLast && outboxFilesPod.length) {
+              await interaction.followUp({ content: sanitized.text, files: outboxFilesPod });
+            } else {
+              await interaction.followUp(sanitized.text);
+            }
+          }
+        }
+
+        log.info(`/pod complete for ${interaction.user.tag}: ${chunksPod.length} chunks`);
+      } catch (err) {
+        log.error(`/pod error for ${interaction.user.tag}: ${err.message}`);
         const errMsg = `處理失敗: ${err.message.slice(0, 200)}`;
         try {
           await interaction.editReply(errMsg);
