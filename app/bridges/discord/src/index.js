@@ -279,6 +279,41 @@ const slashCommands = [
       .setRequired(true)),
 ];
 
+// Send chunked interaction reply with DM fallback when token expires (>15 min)
+async function sendChunkedReply(interaction, chunks, outboxFiles) {
+  let useDM = false;
+  for (let i = 0; i < chunks.length; i++) {
+    const isLast = i === chunks.length - 1;
+    const payload = isLast && outboxFiles.length
+      ? { content: chunks[i], files: outboxFiles }
+      : chunks[i];
+
+    if (useDM) {
+      await interaction.user.send(payload);
+      continue;
+    }
+
+    try {
+      if (i === 0) {
+        await interaction.editReply(payload);
+      } else {
+        await interaction.followUp(payload);
+      }
+    } catch (err) {
+      // Interaction token expired — fall back to DM
+      if (err.code === 10015 || /invalid webhook token|unknown webhook/i.test(err.message)) {
+        useDM = true;
+        const dmPayload = typeof payload === 'string'
+          ? `*(處理時間較長，改用私訊回覆)*\n\n${payload}`
+          : { ...payload, content: `*(處理時間較長，改用私訊回覆)*\n\n${payload.content}` };
+        await interaction.user.send(dmPayload);
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 async function fetchReferencedContent(message) {
   if (!message.reference?.messageId) return '';
   try {
@@ -544,27 +579,20 @@ function setupEventHandlers() {
         const chunks = splitMessage(withFooter);
 
         // First chunk goes as editReply (the deferred reply), rest as follow-ups
+        const sanitizedChunks = [];
+        let ytSecurityBlocked = false;
         for (let i = 0; i < chunks.length; i++) {
           const sanitized = sanitizeOutput(chunks[i], wsPath);
           if (!sanitized.safe) {
             log.warn(`[SECURITY] /yt blocked response chunk ${i} — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
             if (i === 0) await interaction.editReply('Response blocked: contained restricted information.');
+            ytSecurityBlocked = true;
             break;
           }
-          const isLast = i === chunks.length - 1;
-          if (i === 0) {
-            if (isLast && outboxFiles.length) {
-              await interaction.editReply({ content: sanitized.text, files: outboxFiles });
-            } else {
-              await interaction.editReply(sanitized.text);
-            }
-          } else {
-            if (isLast && outboxFiles.length) {
-              await interaction.followUp({ content: sanitized.text, files: outboxFiles });
-            } else {
-              await interaction.followUp(sanitized.text);
-            }
-          }
+          sanitizedChunks.push(sanitized.text);
+        }
+        if (!ytSecurityBlocked) {
+          await sendChunkedReply(interaction, sanitizedChunks, outboxFiles);
         }
 
         log.info(`/yt complete for ${interaction.user.tag}: ${chunks.length} chunks`);
@@ -574,7 +602,7 @@ function setupEventHandlers() {
         try {
           await interaction.editReply(errMsg);
         } catch {
-          await interaction.followUp(errMsg).catch(() => {});
+          await interaction.user.send(errMsg).catch(() => {});
         }
       }
       return;
@@ -715,27 +743,20 @@ function setupEventHandlers() {
         const withFooterPod = responseTextPod + `\n\n-# ⎔ ${shortIdPod} · ${tokenInfoPod}`;
         const chunksPod = splitMessage(withFooterPod);
 
+        const sanitizedChunksPod = [];
+        let podSecurityBlocked = false;
         for (let i = 0; i < chunksPod.length; i++) {
           const sanitized = sanitizeOutput(chunksPod[i], wsPathPod);
           if (!sanitized.safe) {
             log.warn(`[SECURITY] /pod blocked response chunk ${i} — pattern: ${sanitized.blockedBy} — matched: "${sanitized.matchedText}"`);
             if (i === 0) await interaction.editReply('Response blocked: contained restricted information.');
+            podSecurityBlocked = true;
             break;
           }
-          const isLast = i === chunksPod.length - 1;
-          if (i === 0) {
-            if (isLast && outboxFilesPod.length) {
-              await interaction.editReply({ content: sanitized.text, files: outboxFilesPod });
-            } else {
-              await interaction.editReply(sanitized.text);
-            }
-          } else {
-            if (isLast && outboxFilesPod.length) {
-              await interaction.followUp({ content: sanitized.text, files: outboxFilesPod });
-            } else {
-              await interaction.followUp(sanitized.text);
-            }
-          }
+          sanitizedChunksPod.push(sanitized.text);
+        }
+        if (!podSecurityBlocked) {
+          await sendChunkedReply(interaction, sanitizedChunksPod, outboxFilesPod);
         }
 
         log.info(`/pod complete for ${interaction.user.tag}: ${chunksPod.length} chunks`);
@@ -745,7 +766,7 @@ function setupEventHandlers() {
         try {
           await interaction.editReply(errMsg);
         } catch {
-          await interaction.followUp(errMsg).catch(() => {});
+          await interaction.user.send(errMsg).catch(() => {});
         }
       }
       return;
