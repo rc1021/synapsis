@@ -245,6 +245,7 @@ function handleCommand(bridge, userId, parsed, context) {
         '`/yt <video>` — YouTube 逐字稿分析',
         '`/yt <video> verify:true` — 逐字稿 + 驗證探索',
         '`/drive-connect` — 連接 Google Drive',
+        '`/drive-sync` — 同步 workspace 到 Google Drive',
         '`/connection <code>` — Register with an invite code',
         '`/share-code` — Generate a 24hr one-time invite code',
         '`/bind-token` — Generate a 5-min token for cross-platform binding',

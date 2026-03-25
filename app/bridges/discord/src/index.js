@@ -12,6 +12,7 @@ const { sanitizeOutput, isTextFile, TEXT_EXTENSIONS } = require('../../shared/sa
 const engagement = require('../../shared/engagement');
 const webBridge = require('../../web/src/index');
 const { searchWorkspace } = require('../../shared/embedding-search');
+const driveAuth = require('../../shared/drive-auth');
 const log = require('./logger');
 
 const MAX_INPUT = 8000;
@@ -266,6 +267,13 @@ const slashCommands = [
       'zh-CN': '连接 Google Drive 到你的 workspace',
     }),
   new SlashCommandBuilder()
+    .setName('drive-sync')
+    .setDescription('Sync workspace files to Google Drive')
+    .setDescriptionLocalizations({
+      'zh-TW': '同步 workspace 到 Google Drive',
+      'zh-CN': '同步 workspace 到 Google Drive',
+    }),
+  new SlashCommandBuilder()
     .setName('search')
     .setDescription('Semantically search your workspace notes')
     .setDescriptionLocalizations({
@@ -425,7 +433,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /pod, /drive-connect, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /pod, /drive-connect, /drive-sync, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }
@@ -775,6 +783,29 @@ function setupEventHandlers() {
         } catch {
           await interaction.user.send(errMsg).catch(() => {});
         }
+      }
+      return;
+    }
+
+    // --- /drive-sync: sync workspace to Google Drive (no AI, direct API) ---
+    if (commandName === 'drive-sync') {
+      const wsPath = wm.resolveWorkspace(bridge, userId);
+      if (!wsPath) {
+        await interaction.reply({ content: '你尚未註冊，請先使用 `/connection <邀請碼>` 註冊。', ephemeral: true });
+        return;
+      }
+      if (!driveAuth.isConnected(wsPath)) {
+        await interaction.reply({ content: 'Google Drive 尚未連接。請先使用 `/drive-connect` 授權。', ephemeral: true });
+        return;
+      }
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const { synced, total, errors } = await driveAuth.syncToDrive(wsPath);
+        const errNote = errors.length > 0 ? `\n⚠️ ${errors.length} 個檔案失敗: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}` : '';
+        await interaction.editReply(`✓ 同步完成：${synced}/${total} 個檔案已上傳到 Google Drive。${errNote}`);
+      } catch (err) {
+        log.error(`/drive-sync error for ${interaction.user.tag}: ${err.message}`);
+        await interaction.editReply(`同步失敗：${err.message.slice(0, 200)}`);
       }
       return;
     }

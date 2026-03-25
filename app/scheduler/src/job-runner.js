@@ -477,7 +477,7 @@ async function runUserJob(job, wsId, wsAbsPath) {
     const TIERS = {
       quick:    { model: 'claude-haiku-4-5-20251001', timeout: 60000 },
       standard: { model: 'claude-sonnet-4-6',         timeout: 300000 },
-      deep:     { model: 'claude-opus-4-6',            timeout: 600000 },
+      deep:     { model: 'claude-opus-4-6',            timeout: 1200000 },
     };
     const tier = TIERS[job.tier] || TIERS.standard;
     const model = tier.model;
