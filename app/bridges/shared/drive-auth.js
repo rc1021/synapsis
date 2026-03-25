@@ -311,8 +311,8 @@ function downloadDriveFile(accessToken, fileId) {
 
 /**
  * Bidirectional sync between workspace and Google Drive (no AI, no token burn).
- * - Upload: local files → Drive (local wins on conflict)
- * - Download: Drive-only files → local (files that exist on Drive but not locally)
+ * - Upload: local files → Drive (only if local is newer or Drive doesn't have it)
+ * - Download: Drive files → local (only if Drive is newer or not present locally)
  * Returns { uploaded, downloaded, total, errors }.
  */
 async function syncToDrive(wsAbsPath) {
@@ -334,9 +334,25 @@ async function syncToDrive(wsAbsPath) {
   let uploaded = 0, downloaded = 0;
   const errors = [];
 
-  // --- Phase 1: Upload local → Drive ---
+  // Pre-fetch all Drive files for timestamp comparison
+  const driveFileMap = {}; // rel → { id, modifiedTime }
+  try {
+    const driveFiles = await listDriveFiles(accessToken, manifest.rootFolderId, '');
+    for (const df of driveFiles) driveFileMap[df.rel] = df;
+  } catch (err) {
+    log.warn(`Drive listing failed: ${err.message}`);
+  }
+
+  // --- Phase 1: Upload local → Drive (skip if Drive is newer) ---
   for (const file of localFiles) {
     try {
+      const driveFile = driveFileMap[file.rel];
+      if (driveFile) {
+        const localMtime = fs.statSync(file.abs).mtimeMs;
+        const driveMtime = new Date(driveFile.modifiedTime).getTime();
+        if (driveMtime > localMtime) continue; // Drive is newer — will be downloaded in Phase 2
+      }
+
       const dirRel = path.dirname(file.rel) === '.' ? '' : path.dirname(file.rel);
       if (dirRel && !folderCache[dirRel]) {
         let cur = manifest.rootFolderId;
@@ -360,25 +376,28 @@ async function syncToDrive(wsAbsPath) {
     }
   }
 
-  // --- Phase 2: Download Drive → local (Drive-only files) ---
-  try {
-    const driveFiles = await listDriveFiles(accessToken, manifest.rootFolderId, '');
-    for (const df of driveFiles) {
-      if (localRelSet.has(df.rel)) continue; // local wins, already uploaded
+  // --- Phase 2: Download Drive → local (Drive-only OR Drive-newer files) ---
+  for (const [rel, df] of Object.entries(driveFileMap)) {
+    if (localRelSet.has(rel)) {
+      // File exists locally — only download if Drive is newer
       try {
-        const localPath = path.join(wsAbsPath, df.rel);
-        fs.mkdirSync(path.dirname(localPath), { recursive: true });
-        const content = await downloadDriveFile(accessToken, df.id);
-        fs.writeFileSync(localPath, content);
-        manifest.files[df.rel] = df.id;
-        downloaded++;
-      } catch (err) {
-        log.warn(`Download failed for ${df.rel}: ${err.message}`);
-        errors.push(df.rel);
-      }
+        const localAbs = path.join(wsAbsPath, rel);
+        const localMtime = fs.statSync(localAbs).mtimeMs;
+        const driveMtime = new Date(df.modifiedTime).getTime();
+        if (driveMtime <= localMtime) continue; // local is same or newer, skip
+      } catch { continue; }
     }
-  } catch (err) {
-    log.warn(`Drive listing failed: ${err.message}`);
+    try {
+      const localPath = path.join(wsAbsPath, rel);
+      fs.mkdirSync(path.dirname(localPath), { recursive: true });
+      const content = await downloadDriveFile(accessToken, df.id);
+      fs.writeFileSync(localPath, content);
+      manifest.files[rel] = df.id;
+      downloaded++;
+    } catch (err) {
+      log.warn(`Download failed for ${rel}: ${err.message}`);
+      errors.push(rel);
+    }
   }
 
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
