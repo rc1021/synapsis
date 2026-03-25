@@ -800,9 +800,9 @@ function setupEventHandlers() {
       }
       await interaction.deferReply({ ephemeral: true });
       try {
-        const { synced, total, errors } = await driveAuth.syncToDrive(wsPath);
+        const { uploaded, downloaded, total, errors } = await driveAuth.syncToDrive(wsPath);
         const errNote = errors.length > 0 ? `\n⚠️ ${errors.length} 個檔案失敗: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}` : '';
-        await interaction.editReply(`✓ 同步完成：${synced}/${total} 個檔案已上傳到 Google Drive。${errNote}`);
+        await interaction.editReply(`✓ 同步完成：↑${uploaded}/${total} 上傳，↓${downloaded} 從 Drive 下載。${errNote}`);
       } catch (err) {
         log.error(`/drive-sync error for ${interaction.user.tag}: ${err.message}`);
         await interaction.editReply(`同步失敗：${err.message.slice(0, 200)}`);

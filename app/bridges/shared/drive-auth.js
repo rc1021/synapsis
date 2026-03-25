@@ -271,9 +271,49 @@ async function ensureFolder(accessToken, name, parentId) {
 
 const MANIFEST_FILE = '.gdrive/manifest.json';
 
+/** List all non-folder files in a Drive folder recursively. Returns [{ id, rel, name, modifiedTime }] */
+async function listDriveFiles(accessToken, folderId, relPrefix) {
+  const results = [];
+  let pageToken = '';
+  do {
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+    const endpoint = `/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,modifiedTime)${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+    const res = await driveApi('GET', endpoint, accessToken);
+    for (const f of (res.files || [])) {
+      const rel = relPrefix ? `${relPrefix}/${f.name}` : f.name;
+      if (f.mimeType === 'application/vnd.google-apps.folder') {
+        results.push(...await listDriveFiles(accessToken, f.id, rel));
+      } else {
+        results.push({ id: f.id, rel, name: f.name, modifiedTime: f.modifiedTime });
+      }
+    }
+    pageToken = res.nextPageToken || '';
+  } while (pageToken);
+  return results;
+}
+
+/** Download a Drive file, return Buffer. */
+function downloadDriveFile(accessToken, fileId) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'www.googleapis.com',
+      path: `/drive/v3/files/${fileId}?alt=media`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 /**
- * Sync entire workspace to Google Drive (no AI, no token burn).
- * Returns { synced, total, errors }.
+ * Bidirectional sync between workspace and Google Drive (no AI, no token burn).
+ * - Upload: local files → Drive (local wins on conflict)
+ * - Download: Drive-only files → local (files that exist on Drive but not locally)
+ * Returns { uploaded, downloaded, total, errors }.
  */
 async function syncToDrive(wsAbsPath) {
   if (!isConnected(wsAbsPath)) throw new Error('Google Drive not connected. Use /drive-connect first.');
@@ -289,11 +329,13 @@ async function syncToDrive(wsAbsPath) {
   }
 
   const folderCache = { '': manifest.rootFolderId };
-  const files = collectFiles(wsAbsPath);
-  let synced = 0;
+  const localFiles = collectFiles(wsAbsPath);
+  const localRelSet = new Set(localFiles.map(f => f.rel));
+  let uploaded = 0, downloaded = 0;
   const errors = [];
 
-  for (const file of files) {
+  // --- Phase 1: Upload local → Drive ---
+  for (const file of localFiles) {
     try {
       const dirRel = path.dirname(file.rel) === '.' ? '' : path.dirname(file.rel);
       if (dirRel && !folderCache[dirRel]) {
@@ -311,17 +353,38 @@ async function syncToDrive(wsAbsPath) {
       const content = fs.readFileSync(file.abs);
       const res = await uploadFile(accessToken, file.name, guessMimeType(file.name), parentId, manifest.files[file.rel] || null, content);
       if (res.id) manifest.files[file.rel] = res.id;
-      synced++;
+      uploaded++;
     } catch (err) {
-      log.warn(`Sync failed for ${file.rel}: ${err.message}`);
+      log.warn(`Upload failed for ${file.rel}: ${err.message}`);
       errors.push(file.rel);
     }
   }
 
+  // --- Phase 2: Download Drive → local (Drive-only files) ---
+  try {
+    const driveFiles = await listDriveFiles(accessToken, manifest.rootFolderId, '');
+    for (const df of driveFiles) {
+      if (localRelSet.has(df.rel)) continue; // local wins, already uploaded
+      try {
+        const localPath = path.join(wsAbsPath, df.rel);
+        fs.mkdirSync(path.dirname(localPath), { recursive: true });
+        const content = await downloadDriveFile(accessToken, df.id);
+        fs.writeFileSync(localPath, content);
+        manifest.files[df.rel] = df.id;
+        downloaded++;
+      } catch (err) {
+        log.warn(`Download failed for ${df.rel}: ${err.message}`);
+        errors.push(df.rel);
+      }
+    }
+  } catch (err) {
+    log.warn(`Drive listing failed: ${err.message}`);
+  }
+
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  log.info(`Drive sync complete for ${path.basename(wsAbsPath)}: ${synced}/${files.length}`);
-  return { synced, total: files.length, errors };
+  log.info(`Drive sync complete for ${path.basename(wsAbsPath)}: ↑${uploaded} ↓${downloaded}`);
+  return { uploaded, downloaded, total: localFiles.length, errors };
 }
 
 const DRIVE_FOLDER_NAME = process.env.GDRIVE_FOLDER_NAME || 'Synapsis Notes';
