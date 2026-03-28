@@ -291,11 +291,52 @@ Defined in `bridges/shared/command-handler.js`, registered as Discord slash comm
 | `/yt <video>` | Fetch YouTube transcript + AI summary |
 | `/yt <video> verify:true` | Transcript + verify & explore (fact-check + notes) |
 | `/drive-connect` | Connect Google Drive to workspace (OAuth) |
+| `/drive-sync` | Bidirectional sync between workspace and Google Drive |
 | `/connection <code>` | Register with an invite code |
 | `/share-code` | Generate a 24hr invite code |
 | `/bind-token` | Generate a 5-min cross-platform binding token |
 | `/bind <token>` | Bind account to an existing workspace |
 | `/help` | Show available commands |
+
+## Google Drive sync
+
+`bridges/shared/drive-auth.js` — OAuth token management + bidirectional sync engine.
+
+### Sync algorithm (three phases)
+
+| Phase | What happens |
+|-------|-------------|
+| **0 — Drive deletions** | Files present in last sync (`manifest.driveRelSet`) but gone from Drive are deleted locally. Exception: if the local copy was modified after the last sync, keep it and report a conflict instead. |
+| **1 — Upload local → Drive** | For each local file, compare `manifest.driveMtimes[rel]` (Drive modifiedTime at last sync) against the current Drive modifiedTime. If Drive is unchanged → upload only when local is newer. If Drive also changed → attempt 3-way merge (text files only); fall back to timestamp-wins for binary files. |
+| **2 — Download Drive → local** | Drive-only files and Drive-newer files are written locally. Skipped when `manifest.driveMtimes` shows Drive is unchanged since last sync. |
+
+### 3-way merge
+
+Implemented purely in JS (no external diff tools). Only runs for text files (`.md .txt .json .js .ts .html .css .yaml .yml .toml .csv .sh`).
+
+- Uses LCS (longest common subsequence) to compute diffs from both sides against the saved base snapshot.
+- Non-overlapping edits → cleanly merged.
+- Overlapping edits → **local wins**, `conflicted: true` recorded.
+- Memory guard: if `m × n > 2 000 000` lines, falls back to local-wins without merge.
+
+### Manifest file
+
+`workspace/.gdrive/manifest.json` — persisted after every sync.
+
+| Field | Purpose |
+|-------|---------|
+| `rootFolderId` | Drive folder ID for this workspace |
+| `files` | `rel → Drive file ID` |
+| `driveMtimes` | `rel → Drive modifiedTime` at last sync — used to detect Drive-side changes |
+| `driveRelSet` | List of all Drive files seen at last sync — used to detect Drive-side deletions |
+
+### Base snapshots
+
+`workspace/.gdrive/base/<rel>` — copy of each file as it existed after the last successful sync. Used as the "base" for 3-way merge. Written on every upload or download.
+
+### `/drive-sync` output
+
+Returns `{ uploaded, downloaded, deleted, total, errors, conflicts }`. Discord reply shows all non-zero counts and lists up to 3 conflicted filenames.
 
 ## MCP (Model Context Protocol) system
 

@@ -800,9 +800,11 @@ function setupEventHandlers() {
       }
       await interaction.deferReply({ ephemeral: true });
       try {
-        const { uploaded, downloaded, total, errors } = await driveAuth.syncToDrive(wsPath);
+        const { uploaded, downloaded, deleted, total, errors, conflicts } = await driveAuth.syncToDrive(wsPath);
+        const deletedNote = deleted > 0 ? `，🗑 ${deleted} 刪除` : '';
+        const conflictNote = conflicts.length > 0 ? `\n⚡ ${conflicts.length} 個檔案有衝突，已自動合併（local 優先）：${conflicts.slice(0, 3).join(', ')}${conflicts.length > 3 ? '...' : ''}` : '';
         const errNote = errors.length > 0 ? `\n⚠️ ${errors.length} 個檔案失敗: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}` : '';
-        await interaction.editReply(`✓ 同步完成：↑${uploaded}/${total} 上傳，↓${downloaded} 從 Drive 下載。${errNote}`);
+        await interaction.editReply(`✓ 同步完成：↑${uploaded}/${total} 上傳，↓${downloaded} 從 Drive 下載${deletedNote}。${conflictNote}${errNote}`);
       } catch (err) {
         log.error(`/drive-sync error for ${interaction.user.tag}: ${err.message}`);
         await interaction.editReply(`同步失敗：${err.message.slice(0, 200)}`);

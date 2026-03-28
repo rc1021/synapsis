@@ -253,8 +253,8 @@ async function uploadFile(accessToken, name, mimeType, parentId, fileId, content
 
   const method = fileId ? 'PATCH' : 'POST';
   const endpoint = fileId
-    ? `/upload/drive/v3/files/${fileId}?uploadType=multipart`
-    : '/upload/drive/v3/files?uploadType=multipart&fields=id';
+    ? `/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id,modifiedTime`
+    : '/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime';
 
   return driveApi(method, endpoint, accessToken, body, `multipart/related; boundary=${boundary}`);
 }
@@ -309,6 +309,131 @@ function downloadDriveFile(accessToken, fileId) {
   });
 }
 
+// --- 3-way merge helpers ---
+
+const BASE_DIR = '.gdrive/base';
+
+function isTextFile(name) {
+  const ext = path.extname(name).toLowerCase();
+  return ['.md', '.txt', '.json', '.js', '.ts', '.html', '.css', '.yaml', '.yml', '.toml', '.csv', '.sh'].includes(ext);
+}
+
+function saveBase(wsAbsPath, rel, content) {
+  const basePath = path.join(wsAbsPath, BASE_DIR, rel);
+  try {
+    fs.mkdirSync(path.dirname(basePath), { recursive: true });
+    fs.writeFileSync(basePath, content);
+  } catch (err) {
+    log.warn(`saveBase failed for ${rel}: ${err.message}`);
+  }
+}
+
+function loadBase(wsAbsPath, rel) {
+  const basePath = path.join(wsAbsPath, BASE_DIR, rel);
+  try { return fs.readFileSync(basePath); } catch { return null; }
+}
+
+/** LCS of two string arrays. Returns null if inputs exceed memory budget. */
+function computeLcs(a, b) {
+  const m = a.length, n = b.length;
+  if (m * n > 2000000) return null;
+  const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+  for (let i = m - 1; i >= 0; i--)
+    for (let j = n - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const pairs = [];
+  for (let i = 0, j = 0; i < m && j < n;) {
+    if (a[i] === b[j]) { pairs.push([i, j]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else j++;
+  }
+  return pairs;
+}
+
+/** Diff base→src as alternating eq/chg spans. Returns null if too large. */
+function computeDiffSpans(base, src) {
+  const pairs = computeLcs(base, src);
+  if (!pairs) return null;
+  const spans = [];
+  let bi = 0, si = 0;
+  for (const [b, s] of [...pairs, [base.length, src.length]]) {
+    if (bi < b || si < s)
+      spans.push({ type: 'chg', base: base.slice(bi, b), src: src.slice(si, s) });
+    if (b < base.length)
+      spans.push({ type: 'eq' });
+    bi = b + 1; si = s + 1;
+  }
+  return spans;
+}
+
+/**
+ * Convert diff spans to per-base-position modification records.
+ * mod[i].insertBefore = lines to insert before base[i]
+ * mod[i].deleted = whether base[i] is suppressed
+ */
+function spansToMod(baseLen, spans) {
+  const mod = Array.from({ length: baseLen + 1 }, () => ({ insertBefore: [], deleted: false }));
+  let bi = 0;
+  for (const span of spans) {
+    if (span.type === 'eq') { bi++; }
+    else {
+      mod[bi].insertBefore.push(...span.src);
+      for (let k = 0; k < span.base.length; k++) mod[bi + k].deleted = true;
+      bi += span.base.length;
+    }
+  }
+  return mod;
+}
+
+/**
+ * 3-way line merge. On conflict, local wins.
+ * Returns { merged: string, conflicted: boolean }.
+ */
+function merge3(baseText, localText, driveText) {
+  if (localText === driveText) return { merged: localText, conflicted: false };
+  if (localText === baseText) return { merged: driveText, conflicted: false };
+  if (driveText === baseText) return { merged: localText, conflicted: false };
+
+  const base = baseText.split('\n');
+  const local = localText.split('\n');
+  const drive = driveText.split('\n');
+
+  const lSpans = computeDiffSpans(base, local);
+  const dSpans = computeDiffSpans(base, drive);
+  if (!lSpans || !dSpans) return { merged: localText, conflicted: true };
+
+  const lMod = spansToMod(base.length, lSpans);
+  const dMod = spansToMod(base.length, dSpans);
+
+  let conflicted = false;
+  const out = [];
+
+  for (let i = 0; i <= base.length; i++) {
+    const lIns = lMod[i].insertBefore;
+    const dIns = dMod[i].insertBefore;
+
+    if (lIns.length === 0 && dIns.length === 0) {
+      // no insertions
+    } else if (lIns.length === 0) {
+      out.push(...dIns);
+    } else if (dIns.length === 0) {
+      out.push(...lIns);
+    } else if (lIns.join('\n') === dIns.join('\n')) {
+      out.push(...lIns);
+    } else {
+      out.push(...lIns); // conflict: local wins
+      conflicted = true;
+    }
+
+    if (i === base.length) break;
+
+    if (!lMod[i].deleted && !dMod[i].deleted) out.push(base[i]);
+    // if either side deleted: don't output base[i]
+  }
+
+  return { merged: out.join('\n'), conflicted };
+}
+
 /**
  * Bidirectional sync between workspace and Google Drive (no AI, no token burn).
  * - Upload: local files → Drive (only if local is newer or Drive doesn't have it)
@@ -320,8 +445,10 @@ async function syncToDrive(wsAbsPath) {
 
   const accessToken = await getValidAccessToken(wsAbsPath);
   const manifestPath = path.join(wsAbsPath, MANIFEST_FILE);
-  let manifest = { rootFolderId: null, files: {}, dirs: {} };
+  let manifest = { rootFolderId: null, files: {}, dirs: {}, driveMtimes: {}, driveRelSet: [] };
   try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')); } catch {}
+  if (!manifest.driveMtimes) manifest.driveMtimes = {};
+  if (!manifest.driveRelSet) manifest.driveRelSet = [];
 
   // Ensure root folder
   if (!manifest.rootFolderId) {
@@ -331,8 +458,9 @@ async function syncToDrive(wsAbsPath) {
   const folderCache = { '': manifest.rootFolderId };
   const localFiles = collectFiles(wsAbsPath);
   const localRelSet = new Set(localFiles.map(f => f.rel));
-  let uploaded = 0, downloaded = 0;
+  let uploaded = 0, downloaded = 0, deleted = 0;
   const errors = [];
+  const conflicts = []; // files where merge had conflicts (local won)
 
   // Pre-fetch all Drive files for timestamp comparison
   const driveFileMap = {}; // rel → { id, modifiedTime }
@@ -343,16 +471,90 @@ async function syncToDrive(wsAbsPath) {
     log.warn(`Drive listing failed: ${err.message}`);
   }
 
-  // --- Phase 1: Upload local → Drive (skip if Drive is newer) ---
+  // --- Phase 0: Delete local files that were deleted from Drive ---
+  const prevDriveRelSet = new Set(manifest.driveRelSet);
+  for (const rel of prevDriveRelSet) {
+    if (driveFileMap[rel]) continue; // still on Drive, skip
+    const localAbs = path.join(wsAbsPath, rel);
+    if (!localRelSet.has(rel)) continue; // already gone locally too
+    try {
+      const localMtime = fs.statSync(localAbs).mtimeMs;
+      const lastSyncMtime = manifest.driveMtimes[rel] ? new Date(manifest.driveMtimes[rel]).getTime() : 0;
+      if (localMtime > lastSyncMtime + 5000) {
+        log.warn(`Conflict: ${rel} deleted from Drive but modified locally — keeping local copy`);
+        errors.push(`conflict:${rel}`);
+        continue;
+      }
+      fs.rmSync(localAbs);
+      try { fs.rmSync(path.join(wsAbsPath, BASE_DIR, rel)); } catch {}
+      delete manifest.files[rel];
+      delete manifest.driveMtimes[rel];
+      localRelSet.delete(rel);
+      deleted++;
+    } catch (err) {
+      log.warn(`Delete failed for ${rel}: ${err.message}`);
+      errors.push(rel);
+    }
+  }
+
+  // --- Phase 1: Upload local → Drive ---
   for (const file of localFiles) {
     try {
       const driveFile = driveFileMap[file.rel];
+
       if (driveFile) {
-        const localMtime = fs.statSync(file.abs).mtimeMs;
-        const driveMtime = new Date(driveFile.modifiedTime).getTime();
-        if (driveMtime > localMtime) continue; // Drive is newer — will be downloaded in Phase 2
+        const lastKnown = manifest.driveMtimes[file.rel];
+
+        if (lastKnown && lastKnown === driveFile.modifiedTime) {
+          // Drive unchanged since last sync — upload only if local changed
+          const localMtime = fs.statSync(file.abs).mtimeMs;
+          const lastSyncMtime = new Date(lastKnown).getTime();
+          if (localMtime <= lastSyncMtime) continue; // neither changed, skip
+          // local changed → fall through to upload
+        } else {
+          // Drive changed since last sync
+          const localMtime = fs.statSync(file.abs).mtimeMs;
+          const lastSyncMtime = lastKnown ? new Date(lastKnown).getTime() : 0;
+          const localChangedSinceSync = localMtime > lastSyncMtime + 5000;
+
+          if (localChangedSinceSync && isTextFile(file.name)) {
+            // Both sides changed — attempt 3-way merge
+            const baseContent = loadBase(wsAbsPath, file.rel);
+            if (baseContent !== null) {
+              const localContent = fs.readFileSync(file.abs);
+              const driveContent = await downloadDriveFile(accessToken, driveFile.id);
+              const { merged, conflicted } = merge3(
+                baseContent.toString('utf8'),
+                localContent.toString('utf8'),
+                driveContent.toString('utf8')
+              );
+              const mergedBuf = Buffer.from(merged, 'utf8');
+              fs.writeFileSync(file.abs, mergedBuf);
+              const res = await uploadFile(accessToken, file.name, guessMimeType(file.name), manifest.rootFolderId, manifest.files[file.rel] || null, mergedBuf);
+              if (res.id) {
+                manifest.files[file.rel] = res.id;
+                if (res.modifiedTime) {
+                  manifest.driveMtimes[file.rel] = res.modifiedTime;
+                  saveBase(wsAbsPath, file.rel, mergedBuf);
+                }
+              }
+              if (conflicted) conflicts.push(file.rel);
+              uploaded++;
+              continue;
+            }
+          }
+
+          // No base or binary file — fall back to timestamp comparison
+          const driveMtime = new Date(driveFile.modifiedTime).getTime();
+          if (driveMtime > localMtime) {
+            manifest.driveMtimes[file.rel] = driveFile.modifiedTime;
+            continue; // Drive newer → download in Phase 2
+          }
+          // local newer → fall through to upload
+        }
       }
 
+      // Upload local → Drive
       const dirRel = path.dirname(file.rel) === '.' ? '' : path.dirname(file.rel);
       if (dirRel && !folderCache[dirRel]) {
         let cur = manifest.rootFolderId;
@@ -368,7 +570,13 @@ async function syncToDrive(wsAbsPath) {
       const parentId = folderCache[dirRel] || manifest.rootFolderId;
       const content = fs.readFileSync(file.abs);
       const res = await uploadFile(accessToken, file.name, guessMimeType(file.name), parentId, manifest.files[file.rel] || null, content);
-      if (res.id) manifest.files[file.rel] = res.id;
+      if (res.id) {
+        manifest.files[file.rel] = res.id;
+        if (res.modifiedTime) {
+          manifest.driveMtimes[file.rel] = res.modifiedTime;
+          saveBase(wsAbsPath, file.rel, content);
+        }
+      }
       uploaded++;
     } catch (err) {
       log.warn(`Upload failed for ${file.rel}: ${err.message}`);
@@ -379,12 +587,13 @@ async function syncToDrive(wsAbsPath) {
   // --- Phase 2: Download Drive → local (Drive-only OR Drive-newer files) ---
   for (const [rel, df] of Object.entries(driveFileMap)) {
     if (localRelSet.has(rel)) {
-      // File exists locally — only download if Drive is newer
+      const lastKnown = manifest.driveMtimes[rel];
+      if (lastKnown && lastKnown === df.modifiedTime) continue; // Drive unchanged since last sync
       try {
         const localAbs = path.join(wsAbsPath, rel);
         const localMtime = fs.statSync(localAbs).mtimeMs;
         const driveMtime = new Date(df.modifiedTime).getTime();
-        if (driveMtime <= localMtime) continue; // local is same or newer, skip
+        if (driveMtime <= localMtime) { manifest.driveMtimes[rel] = df.modifiedTime; continue; }
       } catch { continue; }
     }
     try {
@@ -393,6 +602,8 @@ async function syncToDrive(wsAbsPath) {
       const content = await downloadDriveFile(accessToken, df.id);
       fs.writeFileSync(localPath, content);
       manifest.files[rel] = df.id;
+      manifest.driveMtimes[rel] = df.modifiedTime;
+      saveBase(wsAbsPath, rel, content);
       downloaded++;
     } catch (err) {
       log.warn(`Download failed for ${rel}: ${err.message}`);
@@ -400,10 +611,11 @@ async function syncToDrive(wsAbsPath) {
     }
   }
 
+  manifest.driveRelSet = Object.keys(driveFileMap);
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  log.info(`Drive sync complete for ${path.basename(wsAbsPath)}: ↑${uploaded} ↓${downloaded}`);
-  return { uploaded, downloaded, total: localFiles.length, errors };
+  log.info(`Drive sync complete for ${path.basename(wsAbsPath)}: ↑${uploaded} ↓${downloaded} 🗑${deleted} ⚡${conflicts.length} conflicts`);
+  return { uploaded, downloaded, deleted, total: localFiles.length, errors, conflicts };
 }
 
 const DRIVE_FOLDER_NAME = process.env.GDRIVE_FOLDER_NAME || 'Synapsis Notes';
