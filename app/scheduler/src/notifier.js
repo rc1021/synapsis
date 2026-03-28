@@ -11,6 +11,22 @@ function suppressEmbeds(text) {
   return text.replace(/(^|[\s(])(https?:\/\/[^\s>)]+)/g, (_, prefix, url) => `${prefix}<${url}>`);
 }
 
+// Subtext marker appended to proactive job messages (Discord -# renders as small grey text)
+const JOB_MARKERS = {
+  'onboarding':        '◌',
+  'feature-intro':     '◈',
+  'seed-watering':     '⋱',
+  'proactive':         '·',
+  'idle-checkin':      '·',
+  'discovery':         '✦',
+  'challenge':         '⟡',
+  'weekly-synthesis':  '◫',
+  'callback':          '↺',
+  'spaced-review':     '↻',
+  'reflection-prompt': '⊙',
+};
+const DEFAULT_JOB_MARKER = '◷'; // user-created cron jobs
+
 // Bridge registry — populated at runtime by bridges registering themselves
 const bridges = new Map(); // name -> { sendDM }
 
@@ -92,6 +108,11 @@ async function notifyAllBindings(wsAbsPath, job, output, error, files) {
   message = suppressEmbeds(message);
   if (message.length > 1900) {
     message = message.slice(0, 1897) + '...';
+  }
+
+  if (!error) {
+    const marker = JOB_MARKERS[job.id] || DEFAULT_JOB_MARKER;
+    message = `${message}\n-# ${marker}`;
   }
 
   for (const binding of profile.bindings) {

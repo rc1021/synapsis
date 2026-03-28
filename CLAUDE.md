@@ -267,6 +267,25 @@ Event trigger processing is split into two phases: non-cooldown jobs (callback, 
 
 Features: cron schedule, quiet hours, one-time jobs, Discord notifications, hot reload, engagement tracking, self-tuning via preferences.json.
 
+### Discord message markers
+
+All proactive job messages sent via `notifyAllBindings` append a `-# {symbol}` subtext footer (Discord renders this as small grey text). Error notifications are not marked. Defined in `notifier.js → JOB_MARKERS`.
+
+| Job | 符號 |
+|-----|------|
+| `onboarding` | `◌` |
+| `feature-intro` | `◈` |
+| `seed-watering` | `⋱` |
+| `proactive` | `·` |
+| `idle-checkin` | `·` |
+| `discovery` | `✦` |
+| `challenge` | `⟡` |
+| `weekly-synthesis` | `◫` |
+| `callback` | `↺` |
+| `spaced-review` | `↻` |
+| `reflection-prompt` | `⊙` |
+| user-created cron | `◷` |
+
 ### Per-workspace cron jobs
 Defined in each workspace's `jobs.json`. User-created scheduled jobs (reminders, periodic tasks). AI creates these when users ask for reminders.
 
