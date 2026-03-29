@@ -1,5 +1,12 @@
 {
   "mcpServers": {
+    "stock-scanner": {
+      "command": "node",
+      "args": ["__APP_DIR__/mcp-servers/stock-scanner/index.js"],
+      "env": {
+        "STOCK_SCANNER_DIR": "__STOCK_SCANNER_DIR__"
+      }
+    },
     "puppeteer": {
       "command": "npx",
       "args": ["-y", "@anthropic-ai/mcp-server-puppeteer"]

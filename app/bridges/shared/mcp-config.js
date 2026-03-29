@@ -17,6 +17,8 @@ const log = createLogger('mcp-config', {
 
 const SYSTEM_MCP_PATH = path.join(__dirname, '..', '..', 'mcp-system.json');
 const APP_DIR = path.join(__dirname, '..', '..');
+const STOCK_SCANNER_DIR = process.env.STOCK_SCANNER_DIR
+  || path.join(os.homedir(), 'projects', '均線糾結掃描系統');
 const MERGED_DIR = path.join(os.tmpdir(), 'synapsis-mcp');
 
 // Cache: wsPath → { mtime, configPath, toolPatterns }
@@ -90,7 +92,8 @@ function buildMcpConfig(wsPath) {
     if (cfgStr.includes('__APP_DIR__') || cfgStr.includes('__WORKSPACE_DIR__')) {
       const replaced = cfgStr
         .replace(/__APP_DIR__/g, APP_DIR.replace(/\\/g, '\\\\'))
-        .replace(/__WORKSPACE_DIR__/g, (wsPath || '').replace(/\\/g, '\\\\'));
+        .replace(/__WORKSPACE_DIR__/g, (wsPath || '').replace(/\\/g, '\\\\'))
+        .replace(/__STOCK_SCANNER_DIR__/g, STOCK_SCANNER_DIR.replace(/\\/g, '\\\\'));
       merged.mcpServers[name] = JSON.parse(replaced);
     }
   }
