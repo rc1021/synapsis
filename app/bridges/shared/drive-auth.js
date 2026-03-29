@@ -462,18 +462,24 @@ async function syncToDrive(wsAbsPath) {
   const errors = [];
   const conflicts = []; // files where merge had conflicts (local won)
 
+  // Clear stale folder ID cache — always resolve fresh from Drive each sync
+  manifest.dirs = {};
+
   // Pre-fetch all Drive files for timestamp comparison
   const driveFileMap = {}; // rel → { id, modifiedTime }
+  let driveListingOk = false;
   try {
     const driveFiles = await listDriveFiles(accessToken, manifest.rootFolderId, '');
     for (const df of driveFiles) driveFileMap[df.rel] = df;
+    driveListingOk = true;
   } catch (err) {
     log.warn(`Drive listing failed: ${err.message}`);
   }
 
   // --- Phase 0: Delete local files that were deleted from Drive ---
+  // Only run if listing succeeded — a partial/failed listing would cause false deletions
   const prevDriveRelSet = new Set(manifest.driveRelSet);
-  for (const rel of prevDriveRelSet) {
+  for (const rel of (driveListingOk ? prevDriveRelSet : [])) {
     if (driveFileMap[rel]) continue; // still on Drive, skip
     const localAbs = path.join(wsAbsPath, rel);
     if (!localRelSet.has(rel)) continue; // already gone locally too
@@ -499,6 +505,7 @@ async function syncToDrive(wsAbsPath) {
 
   // --- Phase 1: Upload local → Drive ---
   for (const file of localFiles) {
+    if (!localRelSet.has(file.rel)) continue; // deleted in Phase 0, skip
     try {
       const driveFile = driveFileMap[file.rel];
 
