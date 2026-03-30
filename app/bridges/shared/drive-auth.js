@@ -461,6 +461,8 @@ async function syncToDrive(wsAbsPath) {
   let uploaded = 0, downloaded = 0;
   const errors = [];
   const conflicts = []; // files where merge had conflicts (local won)
+  const uploadedFiles = [];
+  const downloadedFiles = [];
 
   // Clear stale folder ID cache — always resolve fresh from Drive each sync
   manifest.dirs = {};
@@ -518,6 +520,7 @@ async function syncToDrive(wsAbsPath) {
                 }
               }
               if (conflicted) conflicts.push(file.rel);
+              uploadedFiles.push(file.rel + (conflicted ? ' (merged)' : ''));
               uploaded++;
               continue;
             }
@@ -556,6 +559,7 @@ async function syncToDrive(wsAbsPath) {
           saveBase(wsAbsPath, file.rel, content);
         }
       }
+      uploadedFiles.push(file.rel);
       uploaded++;
     } catch (err) {
       log.warn(`Upload failed for ${file.rel}: ${err.message}`);
@@ -583,6 +587,7 @@ async function syncToDrive(wsAbsPath) {
       manifest.files[rel] = df.id;
       manifest.driveMtimes[rel] = df.modifiedTime;
       saveBase(wsAbsPath, rel, content);
+      downloadedFiles.push(rel);
       downloaded++;
     } catch (err) {
       log.warn(`Download failed for ${rel}: ${err.message}`);
@@ -593,6 +598,17 @@ async function syncToDrive(wsAbsPath) {
   manifest.driveRelSet = Object.keys(driveFileMap);
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+  // Write sync log
+  const syncTime = new Date().toISOString();
+  const logLines = [`# Drive Sync Log`, ``, `**時間：** ${syncTime}`, `**摘要：** ↑${uploaded}/${localFiles.length} 上傳，↓${downloaded} 下載，${errors.length} 失敗，${conflicts.length} 衝突合併`, ``];
+  if (uploadedFiles.length) { logLines.push(`## 上傳 (${uploadedFiles.length})`); uploadedFiles.forEach(f => logLines.push(`- ${f}`)); logLines.push(''); }
+  if (downloadedFiles.length) { logLines.push(`## 下載 (${downloadedFiles.length})`); downloadedFiles.forEach(f => logLines.push(`- ${f}`)); logLines.push(''); }
+  if (conflicts.length) { logLines.push(`## 衝突合併 (local 優先) (${conflicts.length})`); conflicts.forEach(f => logLines.push(`- ${f}`)); logLines.push(''); }
+  if (errors.length) { logLines.push(`## 失敗 (${errors.length})`); errors.forEach(f => logLines.push(`- ${f}`)); logLines.push(''); }
+  const logPath = path.join(wsAbsPath, '.gdrive', 'sync-log.md');
+  try { fs.writeFileSync(logPath, logLines.join('\n')); } catch (e) { log.warn(`Failed to write sync log: ${e.message}`); }
+
   log.info(`Drive sync complete for ${path.basename(wsAbsPath)}: ↑${uploaded} ↓${downloaded} ⚡${conflicts.length} conflicts`);
   return { uploaded, downloaded, total: localFiles.length, errors, conflicts };
 }
