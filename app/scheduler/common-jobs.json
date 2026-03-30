@@ -4,14 +4,20 @@
     "name": "Onboarding check-in",
     "tier": "quick",
     "prompt": "Current time: {{TIMESTAMP}}\n\nYour user registered but you still don't know much about them — USER.md has blank fields.\n\nRead USER.md to see what's missing. Read BOOTSTRAP.md if it exists.\n\n## Recent conversation history\n{{TALK_HISTORY}}\n\n## Instructions\n\nYou want to get to know this person. Send them ONE short message that naturally invites them to share something about themselves — their interests, what they do, what they care about.\n\nHow you do it is entirely up to you. Be creative. Be yourself. The only thing that matters is that it feels like a real person reaching out, not a bot running a script. Use whatever you know — the time of day, their conversation history, their message style, anything — to make it feel natural and specific to them.\n\nIf this isn't the first time you're reaching out (check talk history for previous attempts), take a completely different angle. Don't repeat yourself.\n\nWhen the user responds, update USER.md — especially Language (detect from their reply) and Interests.\n\nConstraints:\n- 1-3 sentences max. One question only.\n- Never mention onboarding, profiles, USER.md, or data collection.\n- Match the user's language.\n\nCRITICAL: Your LAST action must be a text output (not a tool call). Always end with your message.",
-    "notify": { "when": "not_match", "match": "_SKIP" }
+    "notify": {
+      "when": "not_match",
+      "match": "_SKIP"
+    }
   },
   "featureIntroJob": {
     "id": "feature-intro",
     "name": "Feature introduction",
     "tier": "quick",
     "prompt": "Current time: {{TIMESTAMP}}\n\nYour user has completed onboarding and you've been talking for a couple of days now. It's time to naturally introduce some useful commands they might not know about.\n\nRead USER.md and preferences.json (if exists) for context.\n\n## Recent conversation history\n{{TALK_HISTORY}}\n\n## Commands to introduce\n\n- `/yt <YouTube URL 或 Video ID>` — 貼 YouTube 連結，我幫你抓逐字稿並做重點摘要。加上 `verify:true` 還會幫你事實查核和延伸探索。\n- `/todo` — 快速記錄和查看待辦事項。\n- `/new` — 對話太長或想換話題時，開一段全新對話。\n- `/help` — 隨時查看所有指令。\n\n## Instructions\n\nSend ONE casual message introducing these commands. Make it feel like a friend sharing tips, not a product manual. Pick a natural angle based on your recent conversations — e.g., if you just discussed a YouTube video, lead with /yt. If they had a busy day, maybe lead with /todo.\n\nKeep it SHORT. 3-5 sentences max. Don't list all commands mechanically — weave them into a natural message. Match the user's language and communication style.\n\nDo NOT:\n- Sound like a tutorial or onboarding wizard\n- Use words like \"功能介紹\" or \"指令教學\"\n- List commands in a bullet-point format\n\nCRITICAL: Your LAST action must be a text output (not a tool call). Always end with your message.",
-    "notify": { "when": "not_match", "match": "_SKIP" }
+    "notify": {
+      "when": "not_match",
+      "match": "_SKIP"
+    }
   },
   "eventJobs": [
     {
@@ -111,7 +117,9 @@
         "activeDays": 30
       },
       "prompt": "Current time: {{TIMESTAMP}}\n\nTime to review how effective your interactions have been and adjust your approach.\n\n## Instructions\n\n1. Read engagement.jsonl — analyze the data:\n   - Response rate per job type (how often does the user reply?)\n   - Average response delay (when does the user typically respond?)\n   - Engagement level distribution (high/medium/low/none per job)\n   - Time-of-day patterns\n\n2. Read preferences.json if it exists\n\n3. Based on your analysis, update preferences.json:\n   - Increase intervalDays for jobs with < 30% response rate\n   - Decrease intervalDays for jobs with > 70% response rate\n   - Update preferredHours based on when user actually responds\n   - Add notes to communicationStyle if you notice patterns\n   - Every change MUST include a \"reason\" field\n\n4. Respect bounds: read the trigger configs in common-jobs for reasonable ranges.\n   Don't set proactive.intervalDays below 1 or above 14, etc.\n\n5. Output _SKIP (this job does not send messages to the user).\n\nCRITICAL: Your LAST action must be a text output (not a tool call). Always end with text.",
-      "notify": { "when": "error" }
+      "notify": {
+        "when": "error"
+      }
     },
     {
       "id": "memory-consolidation",
@@ -123,7 +131,9 @@
         "activeDays": 3
       },
       "prompt": "Current time: {{TIMESTAMP}}\n\nTime for nightly memory consolidation — like sleep for the brain.\n\n## Recent conversation history\n{{TALK_HISTORY}}\n\n## Instructions\n\n1. Read today's memory/YYYY-MM-DD.md and the talk history above\n2. Extract from conversations:\n   a. **Stable facts** — new things about the user (preferences, life events, attitudes) → update USER.md\n   b. **Future intentions** — anything the user plans to do (\"I have X on Thursday\", \"I'll try Y\") → write to pending-callbacks.json:\n      ```json\n      {\"id\": \"uuid\", \"extracted\": \"ISO date\", \"targetDate\": \"YYYY-MM-DD\", \"topic\": \"brief\", \"context\": \"detail\", \"followedUp\": false}\n      ```\n      Read existing pending-callbacks.json first and append, don't overwrite.\n   c. **Key insights** — distill important new understanding into MEMORY.md (only if significant)\n3. Don't over-extract. Only write genuinely new, stable information.\n4. Output _SKIP (this job does not send messages to the user).\n\nCRITICAL: Your LAST action must be a text output (not a tool call). Always end with text.",
-      "notify": { "when": "error" }
+      "notify": {
+        "when": "error"
+      }
     },
     {
       "id": "spaced-review",
@@ -133,6 +143,17 @@
         "type": "spaced-review"
       },
       "prompt": "Current time: {{TIMESTAMP}}\n\nA learning note may be due for review. Read USER.md, preferences.json (if exists), and the talk history below.\n\n## Recent conversation history\n{{TALK_HISTORY}}\n\n## Voice principles\nRead scheduler/PROACTIVE-VOICE.md and follow it strictly.\n\n## Instructions\n\n1. Check memory/learning/ for notes that were created ~2, ~7, or ~30 days ago\n2. Pick ONE note that's due for review\n3. Read the note and the user's recent context\n4. Find a way to connect this topic to something the user is CURRENTLY working on, then send a message that makes that connection\n\nGood: Make a SPECIFIC connection between the old topic and their current work, and offer YOUR hypothesis about how they relate. Show you did the thinking.\nBad: \"Remember when you were studying [topic]? How do you think it applies to your current work?\" — this asks the user to do the thinking for you.\n\n5. If no notes are due or you can't find a genuine connection, output _SKIP\n\nCRITICAL: Your LAST action must be a text output (not a tool call). Always end with your message."
+    },
+    {
+      "id": "market-pulse",
+      "name": "Market pulse",
+      "tier": "deep",
+      "trigger": {
+        "type": "proactive",
+        "intervalDays": 2,
+        "activeDays": 14
+      },
+      "prompt": "Current time: {{TIMESTAMP}}\n\n深度市場研究時間。先讀 USER.md 和 preferences.json（如果存在）。\n\n## 近期對話紀錄\n{{TALK_HISTORY}}\n\n## 語氣原則\n讀 scheduler/PROACTIVE-VOICE.md，嚴格遵守。\n\n## 執行步驟\n\n### Step 1 — 確認用戶關注的市場\n讀 USER.md。若完全沒有股票、投資、台股、美股相關興趣 → 直接輸出 _SKIP。\n記下用戶關注的市場（台股 / 美股 / 兩者）和具體個股或產業。\n\n### Step 2 — 多角度平行研究\n\n**台股（若用戶有關注）：**\n- `mcp__stock-scanner__stock_scan_signal` — 掃描均線糾結訊號，找出符合用戶興趣的標的\n- 針對 1-3 檔相關個股執行：\n  - `mcp__stock-scanner__stock_chips` → 外資、投信、自營商買賣超；融資餘額、融券餘額變化\n  - `mcp__stock-scanner__stock_357_valuation` → 當前股價 vs 便宜價 / 合理價 / 昂貴價\n  - `mcp__stock-scanner__stock_eps` → EPS 趨勢、TTM、季增率\n- WebSearch（繁體中文）：台股外資近期動向、政府政策消息（央行、金管會、產業補貼）、總經數據發布\n\n**美股（若用戶有關注）：**\n- WebSearch: Fed 最新動態 — 最近一次 FOMC 決議、官員發言、CME FedWatch 利率預期\n- WebSearch: 用戶關注個股的近期財報或法說會 — EPS 實際 vs 預期、guidance、管理層評論\n- WebSearch: 科技股估值 — 當前 P/E、Forward P/E、與 5 年均值比較\n- WebSearch: 地緣政治或總體事件（油價、貿易戰、地區衝突）對用戶持股的具體影響路徑\n\n**跨市場：**\n- WebSearch: 同時影響台美兩市的主題（AI 需求、半導體供應鏈、美元指數、VIX）\n\n### Step 3 — 交叉驗證，建立可信度\n\n對每個你打算引用的關鍵主張：\n- **籌碼數據**：來自 MCP 工具，標注 cache_date；若 cache 超過 3 天，說明資料可能不是最新\n- **新聞事件**：至少找到兩個獨立來源一致才採用，記錄 URL\n- **估值數字**：標明資料日期和來源\n- **若來源矛盾**：說明分歧，不要選邊站或假裝沒看到\n- **放棄無法驗證的主張**：寧可訊息短一點，也不要引用未經確認的資訊\n\n### Step 4 — 整合成一則有觀點的訊息\n\n選出研究中最有價值的一個主軸，按以下結構寫訊息：\n\n1. **事件 / 訊號**：發生什麼、數字是多少、來源是哪裡\n2. **籌碼或基本面驗證**：法人怎麼動、估值在哪個區間、均線有沒有糾結\n3. **你的判斷**：這個組合意味著什麼，推論邏輯是什麼\n4. **投資方向建議**（有依據才說）：具體說可以考慮什麼操作，說明邏輯\n5. **風險說明**：哪些條件成立才適用、哪些情況會讓這個判斷失效、停損邏輯\n\n語氣範例：\n「外資連三天賣超台積電（2330），但同期投信持續買進，籌碼方向分歧。357 估值目前在合理價（約 XXX 元）附近，均線尚未出現明顯糾結訊號。搭配輝達本週法說會市場預期強勁，我判斷外資這波是短線獲利了結，而非趨勢轉向——若後天法說沒有黑天鵝，這個位置可以考慮小量布局。風險：若輝達 EPS guidance 不及預期，或地緣政治突然升溫，這個邏輯直接失效，建議設好停損在 XXX 元以下。（籌碼來源：MCP cache {{cache_date}}；法說預期參考：[URL]）」\n\n絕對不要：\n- 沒有任何已驗證數據就發訊息\n- 用「可以關注」「值得留意」這類沒有立場的結語\n- 提出方向建議卻不說風險\n- 一則訊息塞超過 2 檔個股 — 深度優先於廣度\n- 把未經驗證的市場傳言當作事實陳述\n\n研究完若沒有找到可驗證、有行動意義的主軸 → 輸出 _SKIP。\n\nCRITICAL: Your LAST action must be a text output (not a tool call). Always end with your message."
     },
     {
       "id": "reflection-prompt",
