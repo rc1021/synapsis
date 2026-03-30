@@ -23,10 +23,19 @@ const SCANNER_DIR = process.env.STOCK_SCANNER_DIR
 function latestFile(dir, pattern) {
   if (!fs.existsSync(dir)) return null;
   const files = fs.readdirSync(dir)
-    .filter(f => !pattern || f.match(pattern))
-    .sort()
-    .reverse();
-  return files.length ? path.join(dir, files[0]) : null;
+    .filter(f => !pattern || f.match(pattern));
+  if (!files.length) return null;
+
+  // Sort priority: date desc → close > intraday → all > tw150
+  const modeScore = f => f.includes('_close') ? 1 : 0;
+  const universeScore = f => f.includes('_all_') ? 1 : 0;
+  files.sort((a, b) => {
+    const dateA = a.slice(0, 10), dateB = b.slice(0, 10);
+    if (dateA !== dateB) return dateB.localeCompare(dateA); // newer first
+    if (modeScore(b) !== modeScore(a)) return modeScore(b) - modeScore(a); // close first
+    return universeScore(b) - universeScore(a); // all first
+  });
+  return path.join(dir, files[0]);
 }
 
 function readJson(filePath) {
