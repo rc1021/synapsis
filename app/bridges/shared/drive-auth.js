@@ -458,7 +458,7 @@ async function syncToDrive(wsAbsPath) {
   const folderCache = { '': manifest.rootFolderId };
   const localFiles = collectFiles(wsAbsPath);
   const localRelSet = new Set(localFiles.map(f => f.rel));
-  let uploaded = 0, downloaded = 0, deleted = 0;
+  let uploaded = 0, downloaded = 0;
   const errors = [];
   const conflicts = []; // files where merge had conflicts (local won)
 
@@ -476,36 +476,8 @@ async function syncToDrive(wsAbsPath) {
     log.warn(`Drive listing failed: ${err.message}`);
   }
 
-  // --- Phase 0: Delete local files that were deleted from Drive ---
-  // Only run if listing succeeded — a partial/failed listing would cause false deletions
-  const prevDriveRelSet = new Set(manifest.driveRelSet);
-  for (const rel of (driveListingOk ? prevDriveRelSet : [])) {
-    if (driveFileMap[rel]) continue; // still on Drive, skip
-    const localAbs = path.join(wsAbsPath, rel);
-    if (!localRelSet.has(rel)) continue; // already gone locally too
-    try {
-      const localMtime = fs.statSync(localAbs).mtimeMs;
-      const lastSyncMtime = manifest.driveMtimes[rel] ? new Date(manifest.driveMtimes[rel]).getTime() : 0;
-      if (localMtime > lastSyncMtime + 5000) {
-        log.warn(`Conflict: ${rel} deleted from Drive but modified locally — keeping local copy`);
-        errors.push(`conflict:${rel}`);
-        continue;
-      }
-      fs.rmSync(localAbs);
-      try { fs.rmSync(path.join(wsAbsPath, BASE_DIR, rel)); } catch {}
-      delete manifest.files[rel];
-      delete manifest.driveMtimes[rel];
-      localRelSet.delete(rel);
-      deleted++;
-    } catch (err) {
-      log.warn(`Delete failed for ${rel}: ${err.message}`);
-      errors.push(rel);
-    }
-  }
-
   // --- Phase 1: Upload local → Drive ---
   for (const file of localFiles) {
-    if (!localRelSet.has(file.rel)) continue; // deleted in Phase 0, skip
     try {
       const driveFile = driveFileMap[file.rel];
 
@@ -621,8 +593,8 @@ async function syncToDrive(wsAbsPath) {
   manifest.driveRelSet = Object.keys(driveFileMap);
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  log.info(`Drive sync complete for ${path.basename(wsAbsPath)}: ↑${uploaded} ↓${downloaded} 🗑${deleted} ⚡${conflicts.length} conflicts`);
-  return { uploaded, downloaded, deleted, total: localFiles.length, errors, conflicts };
+  log.info(`Drive sync complete for ${path.basename(wsAbsPath)}: ↑${uploaded} ↓${downloaded} ⚡${conflicts.length} conflicts`);
+  return { uploaded, downloaded, total: localFiles.length, errors, conflicts };
 }
 
 const DRIVE_FOLDER_NAME = process.env.GDRIVE_FOLDER_NAME || 'Synapsis Notes';
