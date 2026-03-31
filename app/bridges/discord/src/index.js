@@ -344,9 +344,6 @@ async function fetchReferencedContent(message) {
       ? `\n[Attachments: ${ref.attachments.map(a => a.name).join(', ')}]`
       : '';
 
-    const isSelf = ref.author.id === message.client.user.id;
-    const MAX_REF = isSelf ? 150 : 500;
-    if (text.length > MAX_REF) text = text.slice(0, MAX_REF) + '...[truncated]';
     if (!text && !attachments) return '';
 
     return `[Replying to ${authorLabel}: "${text}${attachments}"]\n`;
