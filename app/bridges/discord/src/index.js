@@ -329,10 +329,40 @@ async function sendChunkedReply(interaction, chunks, outboxFiles) {
   }
 }
 
-async function fetchReferencedContent(message) {
+const MESSAGE_SPLITTER_DIR = '.messageSplitter';
+
+async function saveMessageGroup(wsPath, messageIds) {
+  if (messageIds.length < 2) return;
+  const dir = join(wsPath, MESSAGE_SPLITTER_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  const filename = messageIds.join('|');
+  fs.writeFileSync(join(dir, filename), '');
+}
+
+async function findMessageGroup(wsPath, messageId) {
+  const dir = join(wsPath, MESSAGE_SPLITTER_DIR);
+  if (!fs.existsSync(dir)) return null;
+  const matches = await fs.promises.glob(`*${messageId}*`, { cwd: dir });
+  if (!matches.length) return null;
+  return matches[0].split('|');
+}
+
+async function fetchReferencedContent(message, wsPath) {
   if (!message.reference?.messageId) return '';
   try {
-    const ref = await message.channel.messages.fetch(message.reference.messageId);
+    const refId = message.reference.messageId;
+    const groupIds = wsPath ? await findMessageGroup(wsPath, refId) : null;
+
+    if (groupIds && groupIds.length > 1) {
+      const refs = await Promise.all(groupIds.map(id => message.channel.messages.fetch(id).catch(() => null)));
+      const validRefs = refs.filter(Boolean);
+      const authorLabel = validRefs[0].author.id === message.client.user.id ? 'Claude (you)' : validRefs[0].author.username;
+      const fullText = validRefs.map(r => r.content || '').join('');
+      if (!fullText) return '';
+      return `[Replying to ${authorLabel}: "${fullText}"]\n`;
+    }
+
+    const ref = await message.channel.messages.fetch(refId);
     if (!ref) return '';
 
     let text = ref.content || '';
@@ -967,7 +997,7 @@ function setupEventHandlers() {
     }
 
     // Prepend referenced message content if this is a reply
-    const refContext = await fetchReferencedContent(message);
+    const refContext = await fetchReferencedContent(message, wsPath);
     if (refContext) prompt = refContext + prompt;
 
     // Fetch all attachments — save to disk, append annotation
@@ -1274,6 +1304,7 @@ function setupEventHandlers() {
       const tokenInfo = `⛁ ${fmtTokens(result.inputTokens)} (${pct}%)`;
       const withFooter = responseText + `\n\n-# ⎔ ${shortId} · ${tokenInfo}`;
       const chunks = splitMessage(withFooter);
+      const sentIds = [];
       for (let i = 0; i < chunks.length; i++) {
         const sanitized = sanitizeOutput(chunks[i], wsPath);
         if (!sanitized.safe) {
@@ -1283,12 +1314,15 @@ function setupEventHandlers() {
         }
         // Attach outbox files to the last chunk
         const isLast = i === chunks.length - 1;
+        let sent;
         if (isLast && outboxFiles.length) {
-          await message.channel.send({ content: sanitized.text, files: outboxFiles });
+          sent = await message.channel.send({ content: sanitized.text, files: outboxFiles });
         } else {
-          await message.channel.send(sanitized.text);
+          sent = await message.channel.send(sanitized.text);
         }
+        sentIds.push(sent.id);
       }
+      if (sentIds.length > 1) saveMessageGroup(wsPath, sentIds).catch(err => log.warn(`Failed to save message group: ${err.message}`));
     } catch (err) {
       stopTyping();
       if (pendingEdit) clearTimeout(pendingEdit);
