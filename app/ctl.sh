@@ -1,6 +1,6 @@
 #!/bin/bash
 # synapsis service control
-# Usage: ./ctl.sh [install|uninstall|update|start|stop|restart|status|version|logs|setup]
+# Usage: ./ctl.sh [install|uninstall|update|start|stop|restart|status|version|logs|setup] [--ngrok|--no-ngrok]
 
 set -euo pipefail
 
@@ -16,6 +16,18 @@ GUI="gui/$(id -u)"
 NGROK_PID_FILE="$SCRIPT_DIR/logs/ngrok.pid"
 NGROK_URL_FILE="$SCRIPT_DIR/logs/ngrok-url.txt"
 
+# Parse --ngrok / --no-ngrok flag from any position
+NGROK_FLAG=""
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --ngrok)    NGROK_FLAG="yes" ;;
+    --no-ngrok) NGROK_FLAG="no" ;;
+    *)          ARGS+=("$arg") ;;
+  esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
 step() { printf "\r\033[K⏳ %s..." "$1"; }
 ok() { printf "\r\033[K✅ %s\n" "$1"; }
 fail() { printf "\r\033[K❌ %s\n" "$1"; exit 1; }
@@ -29,10 +41,59 @@ load_env_var() {
   grep -E "^${key}=" "$env_file" 2>/dev/null | head -1 | cut -d= -f2-
 }
 
+# Detect the ngrok public URL from the local API (works for any running ngrok agent)
+ngrok_detect_url() {
+  local web_port ngrok_url
+  web_port="$(load_env_var WEB_PORT)"
+  [ -z "$web_port" ] && web_port=3001
+
+  step "detecting ngrok URL from local agent"
+  # Find the tunnel that forwards to our web port
+  ngrok_url="$(curl -s http://127.0.0.1:4040/api/tunnels 2>/dev/null \
+    | grep -o '"public_url":"[^"]*"' | head -1 | cut -d'"' -f4)"
+  if [ -n "$ngrok_url" ]; then
+    echo "$ngrok_url" > "$NGROK_URL_FILE"
+    ok "ngrok URL detected ($ngrok_url)"
+  else
+    rm -f "$NGROK_URL_FILE"
+    ok "ngrok agent not reachable — skipped"
+  fi
+}
+
+# Resolve whether we should manage ngrok, detect externally, or skip
+# Sets NGROK_MODE to: "managed", "external", or "skip"
+resolve_ngrok_mode() {
+  local domain
+  domain="$(load_env_var NGROK_DOMAIN)"
+
+  if [ "$NGROK_FLAG" = "no" ]; then
+    NGROK_MODE="skip"; return
+  fi
+
+  if [ "$NGROK_FLAG" = "yes" ]; then
+    # --ngrok flag forces managed mode (auto)
+    [ -z "$domain" ] || [ "$domain" = "external" ] && domain="auto"
+    NGROK_MODE="managed"; return
+  fi
+
+  # No flag — use .env config
+  case "$domain" in
+    "")         NGROK_MODE="skip" ;;
+    external)   NGROK_MODE="external" ;;
+    *)          NGROK_MODE="managed" ;;
+  esac
+}
+
 ngrok_start() {
+  resolve_ngrok_mode
+  case "$NGROK_MODE" in
+    skip) return 0 ;;
+    external) ngrok_detect_url; return 0 ;;
+  esac
+
   local domain web_port ngrok_url
   domain="$(load_env_var NGROK_DOMAIN)"
-  [ -z "$domain" ] && return 0  # not configured, skip silently
+  [ "$NGROK_FLAG" = "yes" ] && { [ -z "$domain" ] || [ "$domain" = "external" ]; } && domain="auto"
 
   web_port="$(load_env_var WEB_PORT)"
   [ -z "$web_port" ] && web_port=3001
@@ -78,6 +139,13 @@ ngrok_start() {
 }
 
 ngrok_stop() {
+  resolve_ngrok_mode
+  # external mode: we don't own the process, just clean up our URL file
+  if [ "$NGROK_MODE" = "external" ]; then
+    rm -f "$NGROK_URL_FILE"
+    return 0
+  fi
+
   if [ -f "$NGROK_PID_FILE" ]; then
     local pid
     pid="$(cat "$NGROK_PID_FILE")"
@@ -210,15 +278,19 @@ case "${1:-status}" in
     else
       echo "⏹  synapsis not running"
     fi
+    domain="$(load_env_var NGROK_DOMAIN 2>/dev/null)"
     if [ -f "$NGROK_PID_FILE" ] && kill -0 "$(cat "$NGROK_PID_FILE")" 2>/dev/null; then
       local url_info=""
       [ -f "$NGROK_URL_FILE" ] && url_info=" → $(cat "$NGROK_URL_FILE")"
       echo "✅ ngrok running (pid $(cat "$NGROK_PID_FILE"))${url_info}"
-    else
-      domain="$(load_env_var NGROK_DOMAIN 2>/dev/null)"
-      if [ -n "$domain" ]; then
-        echo "⏹  ngrok not running"
+    elif [ "$domain" = "external" ]; then
+      if [ -f "$NGROK_URL_FILE" ]; then
+        echo "✅ ngrok external → $(cat "$NGROK_URL_FILE")"
+      else
+        echo "⏹  ngrok external (URL not detected)"
       fi
+    elif [ -n "$domain" ]; then
+      echo "⏹  ngrok not running"
     fi
     ;;
   log|logs)
@@ -268,7 +340,7 @@ case "${1:-status}" in
     node -p "require('$SCRIPT_DIR/package.json').version" 2>/dev/null || echo "unknown"
     ;;
   *)
-    echo "Usage: $0 {install|uninstall|update|start|stop|restart|status|version|logs|setup}"
+    echo "Usage: $0 {install|uninstall|update|start|stop|restart|status|version|logs|setup} [--ngrok|--no-ngrok]"
     exit 1
     ;;
 esac
