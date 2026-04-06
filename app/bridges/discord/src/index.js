@@ -509,8 +509,8 @@ function setupEventHandlers() {
 
       try {
         // Step 1: Run yt-transcript.py
-        const uploadsDir = join(wsPath, 'uploads');
-        fs.mkdirSync(uploadsDir, { recursive: true });
+        const transcriptsDir = join(wsPath, 'transcripts');
+        fs.mkdirSync(transcriptsDir, { recursive: true });
 
         const toolsDir = resolve(__dirname, '..', '..', '..', 'tools');
         const scriptPath = join(toolsDir, 'yt-transcript.py');
@@ -520,7 +520,7 @@ function setupEventHandlers() {
 
         const proc = await new Promise((resolveProc, rejectProc) => {
           const child = require('child_process').spawn(
-            'python3', [scriptPath, video, '--lang', langArg, '--output', uploadsDir],
+            'python3', [scriptPath, video, '--lang', langArg, '--output', transcriptsDir],
             { timeout: 1200000 }, // 20 min max (Whisper can be slow)
           );
           let stdout = '';
@@ -544,16 +544,8 @@ function setupEventHandlers() {
         log.info(`/yt transcript saved: ${savedFilePath}`);
         if (proc.stderr) log.debug(`/yt stderr: ${proc.stderr}`);
 
-        // Auto-cleanup after 10 minutes
-        setTimeout(() => {
-          fs.unlink(savedFilePath, (err) => {
-            if (err && err.code !== 'ENOENT') log.warn(`/yt upload cleanup failed: ${err.message}`);
-            else log.debug(`/yt upload cleaned up: ${savedFilePath}`);
-          });
-        }, 10 * 60 * 1000);
-
         // Step 2: Build prompt for AI
-        const fileAnnotation = `[User requested YouTube transcript via /yt — file "${fileName}" saved to uploads/${fileName} -- use the Read tool to read it]`;
+        const fileAnnotation = `[User requested YouTube transcript via /yt — file "${fileName}" saved to transcripts/${fileName} -- use the Read tool to read it]`;
 
         let aiPrompt;
         if (verify) {
