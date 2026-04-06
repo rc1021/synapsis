@@ -1,15 +1,9 @@
 const { startServer, stopServer, createWebToken, log } = require('./server');
+const { resolveSync: resolveNgrokUrl } = require('../../shared/ngrok-url');
 
 function getPublicUrl() {
-  const publicUrl = process.env.WEB_PUBLIC_URL;
-  if (publicUrl) return publicUrl.replace(/\/$/, '');
-
-  // Try dynamic ngrok URL written by ctl.sh
-  const ngrokUrlFile = require('path').join(__dirname, '../../../logs/ngrok-url.txt');
-  try {
-    const ngrokUrl = require('fs').readFileSync(ngrokUrlFile, 'utf8').trim();
-    if (ngrokUrl) return ngrokUrl;
-  } catch {}
+  const ngrokUrl = resolveNgrokUrl();
+  if (ngrokUrl) return ngrokUrl;
 
   const port = process.env.WEB_PORT || '3001';
   const host = process.env.WEB_PUBLIC_HOST || process.env.WEB_HOST || '0.0.0.0';

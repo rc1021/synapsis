@@ -18,6 +18,7 @@ const path = require('path');
 const https = require('https');
 const wm = require('./workspace-manager');
 const { createLogger } = require('./logger');
+const { resolveSync: resolveNgrokUrl } = require('./ngrok-url');
 
 const log = createLogger('drive-auth', {
   logDir: process.env.LOG_DIR || path.join(__dirname, '..', '..', 'logs'),
@@ -39,20 +40,8 @@ function loadKeys() {
   return keys;
 }
 
-function resolvePublicUrl() {
-  const envUrl = (process.env.WEB_PUBLIC_URL || '').replace(/\/$/, '');
-  if (envUrl) return envUrl;
-  // Try dynamic ngrok URL written by ctl.sh
-  const ngrokUrlFile = path.join(__dirname, '../../logs/ngrok-url.txt');
-  try {
-    const url = fs.readFileSync(ngrokUrlFile, 'utf8').trim();
-    if (url) return url;
-  } catch {}
-  return '';
-}
-
 function getRedirectUri() {
-  const publicUrl = resolvePublicUrl();
+  const publicUrl = resolveNgrokUrl() || '';
   if (!publicUrl) throw new Error('WEB_PUBLIC_URL must be set in .env (or ngrok must be running) for Drive OAuth callback');
   return `${publicUrl}/drive-auth/callback`;
 }
@@ -62,7 +51,7 @@ function getRedirectUri() {
 /** Whether Google Drive OAuth is configured server-wide. */
 function isConfigured() {
   if (!process.env.GDRIVE_OAUTH_KEYS_PATH) return false;
-  if (!resolvePublicUrl()) return false;
+  if (!resolveNgrokUrl()) return false;
   try { loadKeys(); return true; } catch { return false; }
 }
 
