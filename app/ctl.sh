@@ -14,6 +14,7 @@ GENERATED="$SCRIPT_DIR/$LABEL.plist"
 DEST_PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 GUI="gui/$(id -u)"
 NGROK_PID_FILE="$SCRIPT_DIR/logs/ngrok.pid"
+NGROK_URL_FILE="$SCRIPT_DIR/logs/ngrok-url.txt"
 
 step() { printf "\r\033[K⏳ %s..." "$1"; }
 ok() { printf "\r\033[K✅ %s\n" "$1"; }
@@ -29,7 +30,7 @@ load_env_var() {
 }
 
 ngrok_start() {
-  local domain web_port
+  local domain web_port ngrok_url
   domain="$(load_env_var NGROK_DOMAIN)"
   [ -z "$domain" ] && return 0  # not configured, skip silently
 
@@ -44,15 +45,32 @@ ngrok_start() {
 
   command -v ngrok &>/dev/null || fail "ngrok not found — install with: brew install ngrok"
 
-  step "starting ngrok tunnel ($domain)"
-  nohup ngrok http --domain="$domain" "$web_port" \
-    --log="$SCRIPT_DIR/logs/ngrok.log" --log-format=logfmt \
-    &>/dev/null &
+  rm -f "$NGROK_URL_FILE"
+
+  if [ "$domain" = "auto" ]; then
+    step "starting ngrok tunnel (dynamic URL)"
+    nohup ngrok http "$web_port" \
+      --log="$SCRIPT_DIR/logs/ngrok.log" --log-format=logfmt \
+      &>/dev/null &
+  else
+    step "starting ngrok tunnel ($domain)"
+    nohup ngrok http --url="$domain" "$web_port" \
+      --log="$SCRIPT_DIR/logs/ngrok.log" --log-format=logfmt \
+      &>/dev/null &
+  fi
   echo $! > "$NGROK_PID_FILE"
-  sleep 1
+  sleep 2
 
   if kill -0 "$(cat "$NGROK_PID_FILE")" 2>/dev/null; then
-    ok "ngrok started (pid $(cat "$NGROK_PID_FILE"), https://$domain)"
+    # Fetch the public URL from ngrok API
+    ngrok_url="$(curl -s http://127.0.0.1:4040/api/tunnels 2>/dev/null \
+      | grep -o '"public_url":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    if [ -n "$ngrok_url" ]; then
+      echo "$ngrok_url" > "$NGROK_URL_FILE"
+      ok "ngrok started (pid $(cat "$NGROK_PID_FILE"), $ngrok_url)"
+    else
+      ok "ngrok started (pid $(cat "$NGROK_PID_FILE"), URL pending)"
+    fi
   else
     rm -f "$NGROK_PID_FILE"
     fail "ngrok failed to start — check logs/ngrok.log"
@@ -68,7 +86,7 @@ ngrok_stop() {
       kill "$pid" 2>/dev/null || true
       ok "ngrok stopped"
     fi
-    rm -f "$NGROK_PID_FILE"
+    rm -f "$NGROK_PID_FILE" "$NGROK_URL_FILE"
   fi
 }
 
@@ -193,7 +211,9 @@ case "${1:-status}" in
       echo "⏹  synapsis not running"
     fi
     if [ -f "$NGROK_PID_FILE" ] && kill -0 "$(cat "$NGROK_PID_FILE")" 2>/dev/null; then
-      echo "✅ ngrok running (pid $(cat "$NGROK_PID_FILE"))"
+      local url_info=""
+      [ -f "$NGROK_URL_FILE" ] && url_info=" → $(cat "$NGROK_URL_FILE")"
+      echo "✅ ngrok running (pid $(cat "$NGROK_PID_FILE"))${url_info}"
     else
       domain="$(load_env_var NGROK_DOMAIN 2>/dev/null)"
       if [ -n "$domain" ]; then
