@@ -242,12 +242,15 @@ case "${1:-status}" in
     ;;
   update)
     # Re-run install.sh which handles update logic (preserves .env, workspaces, logs)
+    # Pass --ngrok/--no-ngrok flag through
+    local update_args=""
+    [ -n "$NGROK_FLAG" ] && { [ "$NGROK_FLAG" = "yes" ] && update_args="--ngrok" || update_args="--no-ngrok"; }
     INSTALL_SCRIPT="$PROJECT_DIR/install.sh"
     if [ -f "$INSTALL_SCRIPT" ]; then
-      exec bash "$INSTALL_SCRIPT"
+      exec bash "$INSTALL_SCRIPT" $update_args
     else
       echo "Downloading latest installer..."
-      exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh)"
+      exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/rc1021/synapsis/refs/heads/main/install.sh)" -- $update_args
     fi
     ;;
   start)

@@ -8,6 +8,14 @@ REPO_NAME="synapsis"
 INSTALL_DIR="${SYNAPSIS_DIR:-$HOME/.synapsis}"
 BIN_DIR="$INSTALL_DIR/bin"
 
+# Pass-through flags (e.g. --ngrok, --no-ngrok) forwarded to ctl.sh
+CTL_FLAGS=""
+for _arg in "$@"; do
+  case "$_arg" in
+    --ngrok|--no-ngrok) CTL_FLAGS="$CTL_FLAGS $_arg" ;;
+  esac
+done
+
 # When piped via curl, stdin is not the terminal.
 # Open /dev/tty for interactive input.
 exec 3</dev/tty 2>/dev/null || exec 3<&0
@@ -356,10 +364,10 @@ echo ""
 if [ "$(uname)" = "Darwin" ]; then
   if [ "$IS_UPDATE" = true ]; then
     info "Restarting service"
-    bash ctl.sh restart 2>/dev/null || bash ctl.sh install
+    bash ctl.sh restart $CTL_FLAGS 2>/dev/null || bash ctl.sh install $CTL_FLAGS
   else
     info "Installing background service"
-    bash ctl.sh install
+    bash ctl.sh install $CTL_FLAGS
   fi
 else
   info "Starting synapsis"
