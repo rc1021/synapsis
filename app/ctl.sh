@@ -255,7 +255,7 @@ case "${1:-status}" in
   update)
     # Re-run install.sh which handles update logic (preserves .env, workspaces, logs)
     # Pass --ngrok/--no-ngrok flag through
-    local update_args=""
+    update_args=""
     [ -n "$NGROK_FLAG" ] && { [ "$NGROK_FLAG" = "yes" ] && update_args="--ngrok" || update_args="--no-ngrok"; }
     INSTALL_SCRIPT="$PROJECT_DIR/install.sh"
     if [ -f "$INSTALL_SCRIPT" ]; then
@@ -295,7 +295,7 @@ case "${1:-status}" in
     fi
     domain="$(load_env_var NGROK_DOMAIN 2>/dev/null)"
     if [ -f "$NGROK_PID_FILE" ] && kill -0 "$(cat "$NGROK_PID_FILE")" 2>/dev/null; then
-      local url_info=""
+      url_info=""
       [ -f "$NGROK_URL_FILE" ] && url_info=" → $(cat "$NGROK_URL_FILE")"
       echo "✅ ngrok running (pid $(cat "$NGROK_PID_FILE"))${url_info}"
     elif [ "$domain" = "external" ]; then
