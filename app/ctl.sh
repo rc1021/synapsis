@@ -47,10 +47,16 @@ ngrok_detect_url() {
   web_port="$(load_env_var WEB_PORT)"
   [ -z "$web_port" ] && web_port=3001
 
-  step "detecting ngrok URL from local agent"
-  # Find the tunnel that forwards to our web port
+  step "detecting ngrok URL for port $web_port"
+  # Find the tunnel whose local addr matches our web port
   ngrok_url="$(curl -s http://127.0.0.1:4040/api/tunnels 2>/dev/null \
-    | grep -o '"public_url":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    | node -e "
+      let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
+        try{const t=JSON.parse(d).tunnels||[];
+          const m=t.find(x=>(x.config&&x.config.addr||'').includes(':$web_port'));
+          if(m)process.stdout.write(m.public_url);
+        }catch{}
+      })" 2>/dev/null)"
   if [ -n "$ngrok_url" ]; then
     echo "$ngrok_url" > "$NGROK_URL_FILE"
     ok "ngrok URL detected ($ngrok_url)"
@@ -123,9 +129,15 @@ ngrok_start() {
   sleep 2
 
   if kill -0 "$(cat "$NGROK_PID_FILE")" 2>/dev/null; then
-    # Fetch the public URL from ngrok API
+    # Fetch the public URL from ngrok API (match by port)
     ngrok_url="$(curl -s http://127.0.0.1:4040/api/tunnels 2>/dev/null \
-      | grep -o '"public_url":"[^"]*"' | head -1 | cut -d'"' -f4)"
+      | node -e "
+        let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{
+          try{const t=JSON.parse(d).tunnels||[];
+            const m=t.find(x=>(x.config&&x.config.addr||'').includes(':$web_port'));
+            if(m)process.stdout.write(m.public_url);
+          }catch{}
+        })" 2>/dev/null)"
     if [ -n "$ngrok_url" ]; then
       echo "$ngrok_url" > "$NGROK_URL_FILE"
       ok "ngrok started (pid $(cat "$NGROK_PID_FILE"), $ngrok_url)"
