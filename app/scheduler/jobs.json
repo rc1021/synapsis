@@ -43,7 +43,7 @@
       "name": "Generate standalone indigenous souls (incremental)",
       "type": "ai",
       "schedule": "*/15 * * * *",
-      "enabled": true,
+      "enabled": false,
       "timeout": 600000,
       "ai": {
         "model": "claude-sonnet-4-6",
