@@ -130,6 +130,22 @@ Service management:
 2. Register in `providers/registry.js`: `register('xxx', () => new XxxProvider())`
 3. Set `AI_PROVIDER=xxx` in `.env`
 
+## Text-to-speech (`/speak`)
+
+`bridges/shared/tts/` — provider-switchable TTS backend for the `/speak` command, mirroring the AI provider registry pattern.
+
+- **`tts/registry.js`** — lazy-init register/get, defaults to `process.env.TTS_PROVIDER || 'google'`
+- **`tts/chunk.js`** — `chunkText(text, { maxBytes | maxChars })` splits text on paragraph → sentence → hard character boundaries to fit per-provider request limits
+- **`tts/google.js`** / **`tts/openai.js`** — each exports `isConfigured()`, `configHint`, `synthesize(text)` returning `{ buffers, totalChunks, usedChunks, truncated, errors }`
+- **`tts/merge.js`** — `groupBySize()` splits buffers into ≤10MB groups (Discord file limit); `mergeBuffers()` concatenates each group into one MP3 via ffmpeg (falls back to `Buffer.concat` if ffmpeg is unavailable)
+- **`markdown-to-speech.js`** — `toSpeechText(markdown)` converts notes to natural spoken text (tables → "header: value" sentences, lists/headers → punctuated sentences, strips markdown syntax)
+
+### Adding a new TTS provider
+
+1. Create `bridges/shared/tts/xxx.js` — export `isConfigured()`, `configHint`, `synthesize(text)`
+2. Register in `tts/registry.js`: `register('xxx', () => require('./xxx'))`
+3. Set `TTS_PROVIDER=xxx` in `.env`
+
 ## Workspace identity system
 
 Three-layer architecture:
@@ -309,6 +325,7 @@ Defined in `bridges/shared/command-handler.js`, registered as Discord slash comm
 | `/todo <item>` | Add a todo item |
 | `/yt <video>` | Fetch YouTube transcript + AI summary |
 | `/yt <video> verify:true` | Transcript + verify & explore (fact-check + notes) |
+| `/speak <note>` | Convert a workspace note (.md/.txt) to a merged speech audio file (Google Cloud TTS or OpenAI TTS, via `TTS_PROVIDER`) |
 | `/drive-connect` | Connect Google Drive to workspace (OAuth) |
 | `/drive-sync` | Bidirectional sync between workspace and Google Drive |
 | `/connection <code>` | Register with an invite code |

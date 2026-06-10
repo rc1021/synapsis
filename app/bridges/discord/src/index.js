@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, Partials, SlashCommandBuilder, REST, Routes, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { resolve, join } = require('path');
+const { resolve, join, sep, basename, extname } = require('path');
 const fs = require('fs');
 const SessionStore = require('./session-store');
 const { enqueue } = require('./claude-runner');
@@ -13,6 +13,9 @@ const engagement = require('../../shared/engagement');
 const webBridge = require('../../web/src/index');
 const { searchWorkspace } = require('../../shared/embedding-search');
 const driveAuth = require('../../shared/drive-auth');
+const { toSpeechText } = require('../../shared/markdown-to-speech');
+const ttsRegistry = require('../../shared/tts/registry');
+const { mergeBuffers, groupBySize } = require('../../shared/tts/merge');
 const log = require('./logger');
 
 const MAX_INPUT = 8000;
@@ -292,6 +295,25 @@ const slashCommands = [
         ko: '검색 키워드 또는 설명',
       })
       .setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('speak')
+    .setDescription('Convert a workspace note to speech audio')
+    .setDescriptionLocalizations({
+      'zh-TW': '將筆記轉換為語音',
+      'zh-CN': '将笔记转换为语音',
+      ja: 'ノートを音声に変換',
+      ko: '노트를 음성으로 변환',
+    })
+    .addStringOption(opt => opt
+      .setName('note')
+      .setDescription('Relative path to the note (e.g. memory/2026-06-10.md)')
+      .setDescriptionLocalizations({
+        'zh-TW': '筆記的相對路徑（例如 memory/2026-06-10.md）',
+        'zh-CN': '笔记的相对路径（例如 memory/2026-06-10.md）',
+        ja: 'ノートの相対パス（例: memory/2026-06-10.md）',
+        ko: '노트의 상대 경로 (예: memory/2026-06-10.md)',
+      })
+      .setRequired(true)),
 ];
 
 // Send chunked interaction reply with DM fallback when token expires (>15 min)
@@ -460,7 +482,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /pod, /drive-connect, /drive-sync, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /pod, /speak, /drive-connect, /drive-sync, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }
@@ -797,6 +819,105 @@ function setupEventHandlers() {
       } catch (err) {
         log.error(`/pod error for ${interaction.user.tag}: ${err.message}`);
         const errMsg = `處理失敗: ${err.message.slice(0, 200)}`;
+        try {
+          await interaction.editReply(errMsg);
+        } catch {
+          await interaction.user.send(errMsg).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    // --- /speak: convert a workspace note to speech audio ---
+    if (commandName === 'speak') {
+      const note = interaction.options.getString('note');
+
+      if (!note) {
+        const helpLines = [
+          '**`/speak` — 將筆記轉換為語音**',
+          '',
+          '用法:',
+          '`/speak note:<相對路徑>` — 例如 `/speak note:memory/2026-06-10.md`',
+          '',
+          '支援 .md / .markdown / .txt 筆記檔案，整篇轉換並合併為單一語音檔。',
+        ];
+        await interaction.reply({ content: helpLines.join('\n'), ephemeral: true });
+        return;
+      }
+
+      const tts = ttsRegistry.get();
+      if (!tts.isConfigured()) {
+        await interaction.reply({ content: `語音功能尚未設定（管理員需設定 \`${tts.configHint}\`）。`, ephemeral: true });
+        return;
+      }
+
+      const wsPathSpeak = wm.resolveWorkspace(bridge, userId);
+      if (!wsPathSpeak) {
+        await interaction.reply({ content: '你尚未註冊，請先使用 `/connection <邀請碼>` 註冊。', ephemeral: true });
+        return;
+      }
+
+      const normalWs = resolve(wsPathSpeak);
+      const notePath = resolve(normalWs, note);
+      if (notePath !== normalWs && !notePath.startsWith(normalWs + sep)) {
+        await interaction.reply({ content: '路徑不合法。', ephemeral: true });
+        return;
+      }
+
+      const noteExt = extname(notePath).toLowerCase();
+      if (!['.md', '.markdown', '.txt'].includes(noteExt)) {
+        await interaction.reply({ content: '只能朗讀 .md / .markdown / .txt 筆記檔案。', ephemeral: true });
+        return;
+      }
+
+      if (!fs.existsSync(notePath) || !fs.statSync(notePath).isFile()) {
+        await interaction.reply({ content: `找不到筆記：\`${note}\``, ephemeral: true });
+        return;
+      }
+
+      await interaction.deferReply();
+
+      try {
+        const markdown = fs.readFileSync(notePath, 'utf-8');
+        const speechText = toSpeechText(markdown);
+
+        if (!speechText.trim()) {
+          await interaction.editReply('這份筆記轉換後沒有可朗讀的內容。');
+          return;
+        }
+
+        log.info(`/speak from ${interaction.user.tag}: note=${note} provider=${process.env.TTS_PROVIDER || 'google'}`);
+
+        const result = await tts.synthesize(speechText);
+        const validBuffers = result.buffers.filter(Boolean);
+
+        if (validBuffers.length === 0) {
+          await interaction.editReply('語音轉換失敗，請稍後再試。');
+          return;
+        }
+
+        const groups = groupBySize(validBuffers, MAX_DISCORD_FILE_SIZE);
+        const merged = [];
+        for (const group of groups) {
+          merged.push(await mergeBuffers(group));
+        }
+
+        const baseName = basename(note, extname(note));
+        const files = merged.map((buf, i) => ({
+          attachment: buf,
+          name: merged.length > 1 ? `${baseName}-part${i + 1}of${merged.length}.mp3` : `${baseName}.mp3`,
+        }));
+
+        const summaryLines = [`已將 \`${note}\` 轉換為語音`];
+        if (merged.length > 1) summaryLines[0] += `（共 ${merged.length} 個檔案）`;
+        if (result.truncated) summaryLines.push(`筆記過長，僅朗讀前 ${result.usedChunks} 段（共 ${result.totalChunks} 段）。`);
+        if (result.errors.length > 0) summaryLines.push(`部分段落轉換失敗（${result.errors.length} 段），語音可能有缺漏。`);
+
+        await interaction.editReply({ content: summaryLines.join('\n'), files });
+        log.info(`/speak complete for ${interaction.user.tag}: ${files.length} file(s)`);
+      } catch (err) {
+        log.error(`/speak error for ${interaction.user.tag}: ${err.message}`);
+        const errMsg = `語音轉換失敗：${err.message.slice(0, 200)}`;
         try {
           await interaction.editReply(errMsg);
         } catch {

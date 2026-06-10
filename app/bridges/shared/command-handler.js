@@ -244,6 +244,7 @@ function handleCommand(bridge, userId, parsed, context) {
         '`/todo <item>` — Add a todo',
         '`/yt <video>` — YouTube 逐字稿分析',
         '`/yt <video> verify:true` — 逐字稿 + 驗證探索',
+        '`/speak <note>` — 將筆記轉成語音',
         '`/drive-connect` — 連接 Google Drive',
         '`/drive-sync` — 同步 workspace 到 Google Drive',
         '`/connection <code>` — Register with an invite code',
