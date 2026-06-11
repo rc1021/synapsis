@@ -1097,7 +1097,11 @@ function setupEventHandlers() {
           log.debug(`Could not create server invite: ${err.message}`);
         }
       }
-      await interaction.reply({ content: result.reply, ephemeral: !!result.ephemeral });
+      const replyOptions = { content: result.reply, ephemeral: !!result.ephemeral };
+      if (result.file) {
+        replyOptions.files = [{ attachment: Buffer.from(result.file.content, 'utf-8'), name: result.file.name }];
+      }
+      await interaction.reply(replyOptions);
       log.info(`/${commandName} from ${interaction.user.tag}: ${result.reply.slice(0, 100)}`);
     } else {
       await interaction.reply({ content: 'Unknown command.', ephemeral: true });
@@ -1141,7 +1145,16 @@ function setupEventHandlers() {
           await message.channel.send('Response blocked: contained restricted information.');
           return;
         }
-        await message.channel.send(sanitized.text);
+        const sendOptions = { content: sanitized.text };
+        if (result.file) {
+          const fileSanitized = sanitizeOutput(result.file.content, wsPath);
+          if (fileSanitized.safe) {
+            sendOptions.files = [{ attachment: Buffer.from(fileSanitized.text, 'utf-8'), name: result.file.name }];
+          } else {
+            log.warn(`[SECURITY] Blocked command file attachment — pattern: ${fileSanitized.blockedBy} — matched: "${fileSanitized.matchedText}"`);
+          }
+        }
+        await message.channel.send(sendOptions);
         return;
       }
       // If command not recognized, fall through to normal message handling

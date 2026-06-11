@@ -302,31 +302,34 @@ function handleCommand(bridge, userId, parsed, context) {
         ? name.replace(new RegExp(escapeRegExp(filterKw), 'gi'), m => `[${m}]`)
         : name;
 
-      const lines = [`📁 \`${displayPath}\`（${total} 項${matchSuffix}）`, ''];
+      // Header block (count + keywords) is kept short and always shown in
+      // full — it must survive even when the item listing itself doesn't fit.
+      const headerLines = [`📁 \`${displayPath}\`（${total} 項${matchSuffix}）`];
+      if (showKeywords) {
+        const kwLine = keywordLine();
+        if (kwLine) headerLines.push(kwLine);
+      }
+
+      const itemLines = [];
       for (const name of dirs) {
         const rel = subPath ? `${subPath}/${name}` : name;
-        lines.push(`📂 \`${highlight(rel)}/\``);
+        itemLines.push(`📂 \`${highlight(rel)}/\``);
       }
       for (const name of files) {
         const rel = subPath ? `${subPath}/${name}` : name;
         const size = fs.statSync(path.join(targetPath, name)).size;
-        lines.push(`📄 \`${highlight(rel)}\`  (${formatFileSize(size)})`);
+        itemLines.push(`📄 \`${highlight(rel)}\`  (${formatFileSize(size)})`);
       }
 
-      if (showKeywords) {
-        const kwLine = keywordLine();
-        if (kwLine) {
-          lines.push('');
-          lines.push(kwLine);
-        }
+      const fullReply = [...headerLines, '', ...itemLines].join('\n');
+      if (fullReply.length <= 1900) {
+        return { reply: fullReply, ephemeral: true };
       }
 
-      let reply = lines.join('\n');
-      if (reply.length > 1900) {
-        reply = `${reply.slice(0, 1900)}\n...（項目過多，已截斷）`;
-      }
-
-      return { reply, ephemeral: true };
+      // Too many items for one message — attach the full listing as a file
+      // instead of cutting it off mid-line.
+      const summary = [...headerLines, '', `📎 項目過多（${total} 項），完整清單見附件 list.txt`].join('\n');
+      return { reply: summary, ephemeral: true, file: { name: 'list.txt', content: fullReply } };
     }
 
     case 'drive-connect':
