@@ -15,6 +15,12 @@ const connectionAttempts = new Map(); // `${bridge}:${userId}` → { count, rese
 const CONNECTION_RATE_LIMIT = 5;
 const CONNECTION_RATE_WINDOW = 10 * 60 * 1000; // 10 minutes
 
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
 function checkConnectionRate(bridge, userId) {
   const key = `${bridge}:${userId}`;
   const now = Date.now();
@@ -213,6 +219,59 @@ function handleCommand(bridge, userId, parsed, context) {
       }
     }
 
+    case 'list': {
+      if (!isRegistered) {
+        return { reply: 'You must be registered to use this command.', ephemeral: true };
+      }
+
+      const wsPath = wm.resolveWorkspace(bridge, userId);
+      if (!wsPath) {
+        return { reply: 'Workspace not found.', ephemeral: true };
+      }
+
+      const subPath = (args[0] || '').trim();
+      const normalWs = path.resolve(wsPath);
+      const targetPath = path.resolve(normalWs, subPath);
+      if (targetPath !== normalWs && !targetPath.startsWith(normalWs + path.sep)) {
+        return { reply: '路徑不合法。', ephemeral: true };
+      }
+
+      const displayPath = `/${subPath}`.replace(/\/+/g, '/');
+
+      if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) {
+        return { reply: `找不到資料夾：\`${displayPath}\``, ephemeral: true };
+      }
+
+      let entries;
+      try {
+        entries = fs.readdirSync(targetPath, { withFileTypes: true })
+          .filter(e => !e.name.startsWith('.'));
+      } catch {
+        return { reply: '讀取資料夾失敗。', ephemeral: true };
+      }
+
+      const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
+      const files = entries.filter(e => e.isFile()).map(e => e.name).sort();
+
+      if (!dirs.length && !files.length) {
+        return { reply: `📁 \`${displayPath}\` 是空的`, ephemeral: true };
+      }
+
+      const lines = [`📁 \`${displayPath}\``, ''];
+      for (const name of dirs) lines.push(`📂 ${name}/`);
+      for (const name of files) {
+        const size = fs.statSync(path.join(targetPath, name)).size;
+        lines.push(`📄 ${name} (${formatFileSize(size)})`);
+      }
+
+      let reply = lines.join('\n');
+      if (reply.length > 1900) {
+        reply = `${reply.slice(0, 1900)}\n... (項目過多，已截斷)`;
+      }
+
+      return { reply, ephemeral: true };
+    }
+
     case 'drive-connect':
     case 'driveconnect': {
       if (!isRegistered) {
@@ -239,6 +298,7 @@ function handleCommand(bridge, userId, parsed, context) {
         '`/new` or `/reset` — Start a new conversation',
         '`/search <query>` — 語意搜尋 workspace 所有筆記',
         '`/dashboard` — Open file manager',
+        '`/list [path]` — 列出 workspace 資料夾內容',
         '`/commons` — Soul Commons (public — read what the souls are thinking)',
         '`/todo` — List todos',
         '`/todo <item>` — Add a todo',

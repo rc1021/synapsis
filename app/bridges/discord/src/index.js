@@ -296,6 +296,25 @@ const slashCommands = [
       })
       .setRequired(true)),
   new SlashCommandBuilder()
+    .setName('list')
+    .setDescription('List files and folders in your workspace')
+    .setDescriptionLocalizations({
+      'zh-TW': '列出 workspace 資料夾內容',
+      'zh-CN': '列出 workspace 文件夹内容',
+      ja: 'ワークスペースのフォルダ内容を表示',
+      ko: '워크스페이스 폴더 내용 표시',
+    })
+    .addStringOption(opt => opt
+      .setName('path')
+      .setDescription('Relative path to a folder (default: workspace root)')
+      .setDescriptionLocalizations({
+        'zh-TW': '資料夾的相對路徑（預設為根目錄）',
+        'zh-CN': '文件夹的相对路径（默认为根目录）',
+        ja: 'フォルダの相対パス（デフォルト: ルート）',
+        ko: '폴더의 상대 경로 (기본값: 루트)',
+      })
+      .setRequired(false)),
+  new SlashCommandBuilder()
     .setName('speak')
     .setDescription('Convert a workspace note to speech audio')
     .setDescriptionLocalizations({
@@ -482,7 +501,7 @@ function setupEventHandlers() {
       await rest.put(Routes.applicationCommands(client.user.id), {
         body: slashCommands.map(c => c.toJSON()),
       });
-      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /todo, /yt, /pod, /speak, /drive-connect, /drive-sync, /connection, /share-code, /bind-token, /bind');
+      log.info('Slash commands registered: /new, /reset, /search, /commons, /dashboard, /list, /todo, /yt, /pod, /speak, /drive-connect, /drive-sync, /connection, /share-code, /bind-token, /bind');
     } catch (err) {
       log.error('Failed to register slash commands:', err.message);
     }
@@ -994,6 +1013,9 @@ function setupEventHandlers() {
     } else if (commandName === 'todo') {
       const item = interaction.options.getString('item');
       if (item) args.push(item);
+    } else if (commandName === 'list') {
+      const listPath = interaction.options.getString('path');
+      if (listPath) args.push(listPath);
     }
 
     const wsPath = wm.resolveWorkspace(bridge, userId);
