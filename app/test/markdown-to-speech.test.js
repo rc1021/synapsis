@@ -35,6 +35,26 @@ describe('markdown-to-speech', () => {
     it('drops images entirely', () => {
       assert.equal(toSpeechText('![alt text](https://example.com/image.png)'), '');
     });
+
+    it('strips a bare URL inline, collapsing surrounding spaces', () => {
+      assert.equal(toSpeechText('參考 https://example.com/article 文章'), '參考 文章');
+    });
+
+    it('drops a line that is only a bare URL', () => {
+      assert.equal(toSpeechText('Above\nhttps://example.com/article\nBelow'), 'Above\nBelow');
+    });
+
+    it('keeps trailing punctuation after a bare URL', () => {
+      assert.equal(toSpeechText('詳見 https://example.com/article。'), '詳見 。');
+    });
+
+    it('strips emoji', () => {
+      assert.equal(toSpeechText('今天心情很好 😊🎉'), '今天心情很好');
+    });
+
+    it('drops a line that is only emoji', () => {
+      assert.equal(toSpeechText('Above\n🎉🎉🎉\nBelow'), 'Above\nBelow');
+    });
   });
 
   describe('code blocks', () => {

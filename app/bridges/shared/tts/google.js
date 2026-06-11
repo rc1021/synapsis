@@ -23,14 +23,18 @@ async function synthesizeChunk(text) {
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
+    const voiceName = process.env.GOOGLE_TTS_VOICE || DEFAULT_VOICE;
+    // Voice names are "<languageCode>-<Type>-<Variant>", e.g. cmn-TW-Wavenet-A or cmn-CN-Chirp3-HD-Aoede
+    const languageCode = voiceName.split('-').slice(0, 2).join('-');
+
     const res = await fetch(`${TTS_API_URL}?key=${process.env.GOOGLE_TTS_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         input: { text },
         voice: {
-          languageCode: 'cmn-TW',
-          name: process.env.GOOGLE_TTS_VOICE || DEFAULT_VOICE,
+          languageCode,
+          name: voiceName,
         },
         audioConfig: { audioEncoding: 'MP3' },
       }),

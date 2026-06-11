@@ -11,6 +11,13 @@ function ensureSentenceEnd(text) {
   return `${text}。`;
 }
 
+// Bare URLs not wrapped in markdown link syntax — unreadable when spoken aloud.
+// Excludes CJK punctuation/fullwidth ranges so trailing 。，！？ etc. aren't swallowed.
+const BARE_URL_REGEX = /https?:\/\/[^\s()<>[\]{}'"\u{3000}-\u{303F}\u{FF00}-\u{FFEF}]+/gu;
+
+// Emoji and pictographic symbols — TTS engines read these inconsistently (aloud or silently dropped)
+const EMOJI_REGEX = /[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu;
+
 function stripInline(str) {
   return str
     // Images: drop entirely (alt text is usually a filename/URL, not meant to be spoken)
@@ -26,7 +33,10 @@ function stripInline(str) {
     .replace(/~~([^~]+)~~/g, '$1')
     // Italic
     .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/(?<![a-zA-Z0-9])_([^_]+)_(?![a-zA-Z0-9])/g, '$1');
+    .replace(/(?<![a-zA-Z0-9])_([^_]+)_(?![a-zA-Z0-9])/g, '$1')
+    // Bare URLs and emoji — noise when read aloud
+    .replace(BARE_URL_REGEX, '')
+    .replace(EMOJI_REGEX, '');
 }
 
 function isTableRow(line) {
@@ -117,7 +127,10 @@ function processLine(line) {
     return ensureSentenceEnd(stripInline(m[1].trim()));
   }
 
-  return stripInline(stripped);
+  const result = stripInline(stripped);
+  // A line that was only a bare URL/emoji becomes empty after stripping — drop it
+  if (!result.trim() && stripped.trim()) return null;
+  return result;
 }
 
 function toSpeechText(markdown) {
@@ -144,6 +157,8 @@ function toSpeechText(markdown) {
     .join('\n');
 
   text = text.replace(/\n{3,}/g, '\n\n');
+  // Collapse double spaces left behind by removed URLs/emoji
+  text = text.replace(/[ \t]{2,}/g, ' ');
   text = text.replace(/[ \t]+$/gm, '');
   text = text.trim();
 
