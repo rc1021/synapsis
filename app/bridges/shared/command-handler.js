@@ -277,19 +277,31 @@ function handleCommand(bridge, userId, parsed, context) {
         return { reply: `📁 \`${displayPath}\`${suffix}`, ephemeral: true };
       }
 
-      const keywordLine = () => {
+      // Each keyword is its own inline-code span so it can be tapped/copied
+      // individually on mobile.
+      const keywordSummary = () => {
         const keywords = extractKeywords([...dirs, ...files]);
         return keywords.length
-          ? `🔑 關鍵字：${keywords.map(k => `${k.term} (${k.count})`).join('、')}`
+          ? keywords.map(k => `\`${k.term}\` (${k.count})`).join('、')
           : null;
       };
+
+      const headerLine = `📁 \`${displayPath}\`（${total} 項${matchSuffix}）`;
 
       if (showCount) {
         let reply = `📁 \`${displayPath}\`：${total} 項${matchSuffix}（${dirs.length} 資料夾、${files.length} 檔案）`;
         if (showKeywords) {
-          const kwLine = keywordLine();
-          if (kwLine) reply += `\n${kwLine}`;
+          const kw = keywordSummary();
+          reply += `\n🔑 ${kw ? `關鍵字：${kw}` : '沒有萃取到共同關鍵字'}`;
         }
+        return { reply, ephemeral: true };
+      }
+
+      // keywords:true (without count) replaces the item listing entirely —
+      // just the extracted keywords, ready to copy.
+      if (showKeywords) {
+        const kw = keywordSummary();
+        const reply = `${headerLine}\n🔑 ${kw ? `關鍵字：${kw}` : '沒有萃取到共同關鍵字'}`;
         return { reply, ephemeral: true };
       }
 
@@ -302,14 +314,6 @@ function handleCommand(bridge, userId, parsed, context) {
         ? name.replace(new RegExp(escapeRegExp(filterKw), 'gi'), m => `[${m}]`)
         : name;
 
-      // Header block (count + keywords) is kept short and always shown in
-      // full — it must survive even when the item listing itself doesn't fit.
-      const headerLines = [`📁 \`${displayPath}\`（${total} 項${matchSuffix}）`];
-      if (showKeywords) {
-        const kwLine = keywordLine();
-        if (kwLine) headerLines.push(kwLine);
-      }
-
       const itemLines = [];
       for (const name of dirs) {
         const rel = subPath ? `${subPath}/${name}` : name;
@@ -321,15 +325,42 @@ function handleCommand(bridge, userId, parsed, context) {
         itemLines.push(`📄 \`${highlight(rel)}\`  (${formatFileSize(size)})`);
       }
 
-      const fullReply = [...headerLines, '', ...itemLines].join('\n');
+      const fullReply = [headerLine, '', ...itemLines].join('\n');
       if (fullReply.length <= 1900) {
         return { reply: fullReply, ephemeral: true };
       }
 
-      // Too many items for one message — attach the full listing as a file
-      // instead of cutting it off mid-line.
-      const summary = [...headerLines, '', `📎 項目過多（${total} 項），完整清單見附件 list.txt`].join('\n');
-      return { reply: summary, ephemeral: true, file: { name: 'list.txt', content: fullReply } };
+      // Too many items for one message — split into multiple messages
+      // instead of attaching a file (file attachments on ephemeral replies
+      // aren't openable on mobile clients).
+      const PAGE_BUDGET = 1880;
+      const MAX_PAGES = 5;
+      const pages = [];
+      let current = [headerLine, ''];
+      for (const line of itemLines) {
+        const currentText = current.join('\n');
+        const candidateLen = currentText.length + (currentText.length ? 1 : 0) + line.length;
+        if (candidateLen > PAGE_BUDGET && current.length) {
+          pages.push(currentText);
+          current = [];
+        }
+        current.push(line);
+      }
+      if (current.length) pages.push(current.join('\n'));
+
+      if (pages.length > MAX_PAGES) {
+        return {
+          reply: `${headerLine}\n\n📎 項目過多（共 ${pages.length} 頁），請改用 \`filter\`、\`count\` 或 \`keywords\` 縮小範圍。`,
+          ephemeral: true,
+        };
+      }
+
+      if (pages.length === 1) {
+        return { reply: pages[0], ephemeral: true };
+      }
+
+      const numbered = pages.map((p, i) => `${p}\n\n— ${i + 1}/${pages.length} —`);
+      return { reply: numbered[0], extraReplies: numbered.slice(1), ephemeral: true };
     }
 
     case 'drive-connect':

@@ -57,19 +57,29 @@ describe('/list command', () => {
     assert.match(result.reply, /：2 項，符合「下雨」（0 資料夾、2 檔案）/);
   });
 
-  it('keeps the keyword line in the header even when the listing is too long to fit', () => {
+  it('keywords:true shows only extracted keywords, no item listing', () => {
     const result = list(['memory', '', '--keywords']);
     assert.match(result.reply, /🔑 關鍵字/);
-    assert.match(result.reply, /下雨/);
-    assert.ok(result.file, 'expected a file attachment for the full listing');
-    assert.equal(result.file.name, 'list.txt');
-    assert.match(result.file.content, /2026-03-01\.md/);
-    assert.match(result.file.content, /2026-03-60\.md/);
+    assert.match(result.reply, /`下雨`/);
+    assert.doesNotMatch(result.reply, /📂|📄/);
+    assert.equal(result.extraReplies, undefined);
   });
 
-  it('does not attach a file for a short listing', () => {
+  it('paginates a listing too long to fit in one message', () => {
+    const result = list(['memory']);
+    assert.match(result.reply, /📁 `\/memory`（63 項）/);
+    assert.ok(Array.isArray(result.extraReplies) && result.extraReplies.length > 0, 'expected extra pages');
+    assert.equal(result.file, undefined);
+    const all = [result.reply, ...result.extraReplies].join('\n');
+    assert.match(all, /2026-03-01\.md/);
+    assert.match(all, /2026-03-60\.md/);
+    assert.match(result.extraReplies[result.extraReplies.length - 1], /— \d+\/\d+ —/);
+  });
+
+  it('does not paginate a short listing', () => {
     const result = list(['memory', '下雨']);
     assert.equal(result.file, undefined);
+    assert.equal(result.extraReplies, undefined);
   });
 
   it('reports no matches without truncation noise', () => {
