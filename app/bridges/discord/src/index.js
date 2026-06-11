@@ -898,7 +898,7 @@ function setupEventHandlers() {
           '用法:',
           '`/speak note:<相對路徑>` — 例如 `/speak note:memory/2026-06-10.md`',
           '',
-          '支援 .md / .markdown / .txt 筆記檔案，整篇轉換並合併為單一語音檔。',
+          '支援 .md / .markdown / .txt 筆記檔案，整篇轉換並合併為單一語音檔，並附上轉換後的逐字稿。',
         ];
         await interaction.reply({ content: helpLines.join('\n'), ephemeral: true });
         return;
@@ -966,6 +966,7 @@ function setupEventHandlers() {
           attachment: buf,
           name: merged.length > 1 ? `${baseName}-part${i + 1}of${merged.length}.mp3` : `${baseName}.mp3`,
         }));
+        files.push({ attachment: Buffer.from(speechText, 'utf-8'), name: `${baseName}.txt` });
 
         const summaryLines = [`已將 \`${note}\` 轉換為語音`];
         if (merged.length > 1) summaryLines[0] += `（共 ${merged.length} 個檔案）`;
