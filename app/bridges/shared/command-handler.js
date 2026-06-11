@@ -229,14 +229,14 @@ function handleCommand(bridge, userId, parsed, context) {
         return { reply: 'Workspace not found.', ephemeral: true };
       }
 
-      const subPath = (args[0] || '').trim();
+      const subPath = (args[0] || '').trim().replace(/\/+$/, '');
       const normalWs = path.resolve(wsPath);
       const targetPath = path.resolve(normalWs, subPath);
       if (targetPath !== normalWs && !targetPath.startsWith(normalWs + path.sep)) {
         return { reply: '路徑不合法。', ephemeral: true };
       }
 
-      const displayPath = `/${subPath}`.replace(/\/+/g, '/');
+      const displayPath = subPath ? `/${subPath}` : '/';
 
       if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) {
         return { reply: `找不到資料夾：\`${displayPath}\``, ephemeral: true };
@@ -257,19 +257,27 @@ function handleCommand(bridge, userId, parsed, context) {
         return { reply: `📁 \`${displayPath}\` 是空的`, ephemeral: true };
       }
 
-      const lines = [`📁 \`${displayPath}\``, ''];
-      for (const name of dirs) lines.push(`📂 ${name}/`);
+      // Full relative paths in a code block — one tap to copy on mobile,
+      // and the path is directly usable as input to /list or /speak.
+      const lines = [];
+      for (const name of dirs) {
+        const rel = subPath ? `${subPath}/${name}` : name;
+        lines.push(`${rel}/`);
+      }
       for (const name of files) {
+        const rel = subPath ? `${subPath}/${name}` : name;
         const size = fs.statSync(path.join(targetPath, name)).size;
-        lines.push(`📄 ${name} (${formatFileSize(size)})`);
+        lines.push(`${rel}  (${formatFileSize(size)})`);
       }
 
-      let reply = lines.join('\n');
-      if (reply.length > 1900) {
-        reply = `${reply.slice(0, 1900)}\n... (項目過多，已截斷)`;
+      const header = `📁 \`${displayPath}\`（${dirs.length + files.length} 項）`;
+      let body = lines.join('\n');
+      const maxBodyLen = 1900 - header.length - 10; // code fences + newlines
+      if (body.length > maxBodyLen) {
+        body = `${body.slice(0, maxBodyLen)}\n...（項目過多，已截斷）`;
       }
 
-      return { reply, ephemeral: true };
+      return { reply: `${header}\n\`\`\`\n${body}\n\`\`\``, ephemeral: true };
     }
 
     case 'drive-connect':
