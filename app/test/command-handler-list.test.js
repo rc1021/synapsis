@@ -18,6 +18,9 @@ describe('/list command', () => {
     wsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'list-test-'));
     fs.mkdirSync(path.join(wsDir, 'memory'));
     fs.mkdirSync(path.join(wsDir, 'memory', 'archive'));
+    fs.mkdirSync(path.join(wsDir, 'onlyfiles'));
+    fs.writeFileSync(path.join(wsDir, 'onlyfiles', 'a.md'), 'x');
+    fs.writeFileSync(path.join(wsDir, 'onlyfiles', 'b.md'), 'x');
     fs.writeFileSync(path.join(wsDir, 'memory', '下雨天心情.md'), 'x');
     fs.writeFileSync(path.join(wsDir, 'memory', '2026-06-09-下雨筆記.md'), 'x');
     for (let i = 1; i <= 60; i++) {
@@ -85,5 +88,22 @@ describe('/list command', () => {
   it('reports no matches without truncation noise', () => {
     const result = list(['memory', 'zzz']);
     assert.match(result.reply, /沒有符合「zzz」的項目/);
+  });
+
+  it('folders:true shows only folders, no files', () => {
+    const result = list(['memory', '', '--folders']);
+    assert.match(result.reply, /📁 `\/memory`（1 項）/);
+    assert.match(result.reply, /📂 `memory\/archive\/`/);
+    assert.doesNotMatch(result.reply, /📄/);
+  });
+
+  it('combines folders with count', () => {
+    const result = list(['memory', '', '--count', '--folders']);
+    assert.match(result.reply, /：1 項（1 資料夾、0 檔案）/);
+  });
+
+  it('reports no folders when there are none', () => {
+    const result = list(['onlyfiles', '', '--folders']);
+    assert.match(result.reply, /沒有資料夾/);
   });
 });

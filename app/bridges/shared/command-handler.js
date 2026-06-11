@@ -239,6 +239,7 @@ function handleCommand(bridge, userId, parsed, context) {
       const flags = args.slice(2);
       const showCount = flags.includes('--count');
       const showKeywords = flags.includes('--keywords');
+      const foldersOnly = flags.includes('--folders');
 
       const normalWs = path.resolve(wsPath);
       const targetPath = path.resolve(normalWs, subPath);
@@ -269,11 +270,17 @@ function handleCommand(bridge, userId, parsed, context) {
         files = files.filter(name => filterRe.test(name));
       }
 
+      if (foldersOnly) {
+        files = [];
+      }
+
       const total = dirs.length + files.length;
       const matchSuffix = filterKw ? `，符合「${filterKw}」` : '';
 
       if (!total) {
-        const suffix = filterKw ? `，沒有符合「${filterKw}」的項目` : ' 是空的';
+        const suffix = filterKw
+          ? `，沒有符合「${filterKw}」的項目`
+          : (foldersOnly ? ' 沒有資料夾' : ' 是空的');
         return { reply: `📁 \`${displayPath}\`${suffix}`, ephemeral: true };
       }
 
@@ -389,7 +396,7 @@ function handleCommand(bridge, userId, parsed, context) {
         '`/new` or `/reset` — Start a new conversation',
         '`/search <query>` — 語意搜尋 workspace 所有筆記',
         '`/dashboard` — Open file manager',
-        '`/list [path] [filter] [count] [keywords]` — 列出 workspace 資料夾內容（可篩選關鍵字、只顯示數量、或萃取常見關鍵字）',
+        '`/list [path] [filter] [count] [keywords] [folders]` — 列出 workspace 資料夾內容（可篩選關鍵字、只顯示數量、萃取常見關鍵字、或只顯示資料夾）',
         '`/commons` — Soul Commons (public — read what the souls are thinking)',
         '`/todo` — List todos',
         '`/todo <item>` — Add a todo',

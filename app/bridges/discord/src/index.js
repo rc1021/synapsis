@@ -343,6 +343,16 @@ const slashCommands = [
         ja: '項目名から共通キーワードを抽出',
         ko: '항목 이름에서 공통 키워드 추출',
       })
+      .setRequired(false))
+    .addBooleanOption(opt => opt
+      .setName('folders')
+      .setDescription('Only show folders, not files')
+      .setDescriptionLocalizations({
+        'zh-TW': '只顯示資料夾，不顯示檔案',
+        'zh-CN': '只显示文件夹，不显示文件',
+        ja: 'フォルダのみ表示（ファイルを除く）',
+        ko: '폴더만 표시 (파일 제외)',
+      })
       .setRequired(false)),
   new SlashCommandBuilder()
     .setName('speak')
@@ -1064,6 +1074,7 @@ function setupEventHandlers() {
       args.push(interaction.options.getString('filter') || '');
       if (interaction.options.getBoolean('count')) args.push('--count');
       if (interaction.options.getBoolean('keywords')) args.push('--keywords');
+      if (interaction.options.getBoolean('folders')) args.push('--folders');
     }
 
     const wsPath = wm.resolveWorkspace(bridge, userId);
