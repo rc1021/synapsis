@@ -257,27 +257,27 @@ function handleCommand(bridge, userId, parsed, context) {
         return { reply: `📁 \`${displayPath}\` 是空的`, ephemeral: true };
       }
 
-      // Full relative paths in a code block — one tap to copy on mobile,
-      // and the path is directly usable as input to /list or /speak.
-      const lines = [];
+      // Each path is its own inline-code span (no spaces inside) so it can be
+      // tapped/double-tapped and copied individually on mobile, separate from
+      // the emoji/size annotation around it. Paths are full relative paths,
+      // directly usable as input to /list path: or /speak note:.
+      const lines = [`📁 \`${displayPath}\`（${dirs.length + files.length} 項）`, ''];
       for (const name of dirs) {
         const rel = subPath ? `${subPath}/${name}` : name;
-        lines.push(`${rel}/`);
+        lines.push(`📂 \`${rel}/\``);
       }
       for (const name of files) {
         const rel = subPath ? `${subPath}/${name}` : name;
         const size = fs.statSync(path.join(targetPath, name)).size;
-        lines.push(`${rel}  (${formatFileSize(size)})`);
+        lines.push(`📄 \`${rel}\`  (${formatFileSize(size)})`);
       }
 
-      const header = `📁 \`${displayPath}\`（${dirs.length + files.length} 項）`;
-      let body = lines.join('\n');
-      const maxBodyLen = 1900 - header.length - 10; // code fences + newlines
-      if (body.length > maxBodyLen) {
-        body = `${body.slice(0, maxBodyLen)}\n...（項目過多，已截斷）`;
+      let reply = lines.join('\n');
+      if (reply.length > 1900) {
+        reply = `${reply.slice(0, 1900)}\n...（項目過多，已截斷）`;
       }
 
-      return { reply: `${header}\n\`\`\`\n${body}\n\`\`\``, ephemeral: true };
+      return { reply, ephemeral: true };
     }
 
     case 'drive-connect':
