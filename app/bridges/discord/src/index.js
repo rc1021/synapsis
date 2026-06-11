@@ -313,6 +313,36 @@ const slashCommands = [
         ja: 'フォルダの相対パス（デフォルト: ルート）',
         ko: '폴더의 상대 경로 (기본값: 루트)',
       })
+      .setRequired(false))
+    .addStringOption(opt => opt
+      .setName('filter')
+      .setDescription('Only show items whose name contains this keyword')
+      .setDescriptionLocalizations({
+        'zh-TW': '只顯示名稱包含此關鍵字的項目',
+        'zh-CN': '只显示名称包含此关键字的项目',
+        ja: 'このキーワードを含む項目のみ表示',
+        ko: '이 키워드를 포함하는 항목만 표시',
+      })
+      .setRequired(false))
+    .addBooleanOption(opt => opt
+      .setName('count')
+      .setDescription('Show item count instead of listing')
+      .setDescriptionLocalizations({
+        'zh-TW': '只顯示項目數量，不列出清單',
+        'zh-CN': '只显示项目数量，不列出清单',
+        ja: '一覧の代わりに件数を表示',
+        ko: '목록 대신 항목 수 표시',
+      })
+      .setRequired(false))
+    .addBooleanOption(opt => opt
+      .setName('keywords')
+      .setDescription('Extract common keywords from item names')
+      .setDescriptionLocalizations({
+        'zh-TW': '從項目名稱中萃取常見關鍵字',
+        'zh-CN': '从项目名称中提取常见关键字',
+        ja: '項目名から共通キーワードを抽出',
+        ko: '항목 이름에서 공통 키워드 추출',
+      })
       .setRequired(false)),
   new SlashCommandBuilder()
     .setName('speak')
@@ -1030,8 +1060,10 @@ function setupEventHandlers() {
       const item = interaction.options.getString('item');
       if (item) args.push(item);
     } else if (commandName === 'list') {
-      const listPath = interaction.options.getString('path');
-      if (listPath) args.push(listPath);
+      args.push(interaction.options.getString('path') || '');
+      args.push(interaction.options.getString('filter') || '');
+      if (interaction.options.getBoolean('count')) args.push('--count');
+      if (interaction.options.getBoolean('keywords')) args.push('--keywords');
     }
 
     const wsPath = wm.resolveWorkspace(bridge, userId);

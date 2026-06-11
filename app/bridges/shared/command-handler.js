@@ -7,6 +7,7 @@ const fs = require('fs');
 const wm = require('./workspace-manager');
 const webBridge = require('../web/src/index');
 const driveAuth = require('./drive-auth');
+const { extractKeywords } = require('./keyword-extract');
 
 const TODO_FILE = 'TODO.md';
 
@@ -19,6 +20,10 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function checkConnectionRate(bridge, userId) {
@@ -230,6 +235,11 @@ function handleCommand(bridge, userId, parsed, context) {
       }
 
       const subPath = (args[0] || '').trim().replace(/\/+$/, '');
+      const filterKw = (args[1] || '').trim();
+      const flags = args.slice(2);
+      const showCount = flags.includes('--count');
+      const showKeywords = flags.includes('--keywords');
+
       const normalWs = path.resolve(wsPath);
       const targetPath = path.resolve(normalWs, subPath);
       if (targetPath !== normalWs && !targetPath.startsWith(normalWs + path.sep)) {
@@ -250,26 +260,65 @@ function handleCommand(bridge, userId, parsed, context) {
         return { reply: '讀取資料夾失敗。', ephemeral: true };
       }
 
-      const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
-      const files = entries.filter(e => e.isFile()).map(e => e.name).sort();
+      let dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
+      let files = entries.filter(e => e.isFile()).map(e => e.name).sort();
 
-      if (!dirs.length && !files.length) {
-        return { reply: `📁 \`${displayPath}\` 是空的`, ephemeral: true };
+      if (filterKw) {
+        const filterRe = new RegExp(escapeRegExp(filterKw), 'i');
+        dirs = dirs.filter(name => filterRe.test(name));
+        files = files.filter(name => filterRe.test(name));
+      }
+
+      const total = dirs.length + files.length;
+      const matchSuffix = filterKw ? `，符合「${filterKw}」` : '';
+
+      if (!total) {
+        const suffix = filterKw ? `，沒有符合「${filterKw}」的項目` : ' 是空的';
+        return { reply: `📁 \`${displayPath}\`${suffix}`, ephemeral: true };
+      }
+
+      const keywordLine = () => {
+        const keywords = extractKeywords([...dirs, ...files]);
+        return keywords.length
+          ? `🔑 關鍵字：${keywords.map(k => `${k.term} (${k.count})`).join('、')}`
+          : null;
+      };
+
+      if (showCount) {
+        let reply = `📁 \`${displayPath}\`：${total} 項${matchSuffix}（${dirs.length} 資料夾、${files.length} 檔案）`;
+        if (showKeywords) {
+          const kwLine = keywordLine();
+          if (kwLine) reply += `\n${kwLine}`;
+        }
+        return { reply, ephemeral: true };
       }
 
       // Each path is its own inline-code span (no spaces inside) so it can be
       // tapped/double-tapped and copied individually on mobile, separate from
       // the emoji/size annotation around it. Paths are full relative paths,
-      // directly usable as input to /list path: or /speak note:.
-      const lines = [`📁 \`${displayPath}\`（${dirs.length + files.length} 項）`, ''];
+      // directly usable as input to /list path: or /speak note: — unless a
+      // filter keyword is highlighted with [brackets] inside the span.
+      const highlight = (name) => filterKw
+        ? name.replace(new RegExp(escapeRegExp(filterKw), 'gi'), m => `[${m}]`)
+        : name;
+
+      const lines = [`📁 \`${displayPath}\`（${total} 項${matchSuffix}）`, ''];
       for (const name of dirs) {
         const rel = subPath ? `${subPath}/${name}` : name;
-        lines.push(`📂 \`${rel}/\``);
+        lines.push(`📂 \`${highlight(rel)}/\``);
       }
       for (const name of files) {
         const rel = subPath ? `${subPath}/${name}` : name;
         const size = fs.statSync(path.join(targetPath, name)).size;
-        lines.push(`📄 \`${rel}\`  (${formatFileSize(size)})`);
+        lines.push(`📄 \`${highlight(rel)}\`  (${formatFileSize(size)})`);
+      }
+
+      if (showKeywords) {
+        const kwLine = keywordLine();
+        if (kwLine) {
+          lines.push('');
+          lines.push(kwLine);
+        }
       }
 
       let reply = lines.join('\n');
@@ -306,7 +355,7 @@ function handleCommand(bridge, userId, parsed, context) {
         '`/new` or `/reset` — Start a new conversation',
         '`/search <query>` — 語意搜尋 workspace 所有筆記',
         '`/dashboard` — Open file manager',
-        '`/list [path]` — 列出 workspace 資料夾內容',
+        '`/list [path] [filter] [count] [keywords]` — 列出 workspace 資料夾內容（可篩選關鍵字、只顯示數量、或萃取常見關鍵字）',
         '`/commons` — Soul Commons (public — read what the souls are thinking)',
         '`/todo` — List todos',
         '`/todo <item>` — Add a todo',
