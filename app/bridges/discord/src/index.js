@@ -982,17 +982,33 @@ function setupEventHandlers() {
       await interaction.deferReply({ ephemeral: true });
 
       try {
-        const results = await searchWorkspace(wsPath, query);
+        const { results, dateRangeRequested, dateRangeMatched, lowConfidence } = await searchWorkspace(wsPath, query);
 
         if (results.length === 0) {
           await interaction.editReply('沒有找到相關筆記。索引可能還在建立中，請稍後再試。');
           return;
         }
 
-        const lines = [`🔍 搜尋「${query}」— 找到 ${results.length} 筆\n`];
+        const MATCH_LABELS = {
+          date: '📌',
+          'date+topic': '📌🏷️',
+          lexical: '🏷️',
+          semantic: '🔍',
+        };
+
+        const lines = [`🔍 搜尋「${query}」— 找到 ${results.length} 筆`];
+        if (dateRangeRequested && !dateRangeMatched) {
+          lines.push('（找不到該時間範圍的筆記，以下是其他可能相關的結果）');
+        }
+        if (lowConfidence) {
+          lines.push('（沒有找到高度相關的筆記，以下是較弱的參考）');
+        }
+        lines.push('');
+
         results.forEach((r, i) => {
-          const pct = Math.round(r.score * 100);
-          lines.push(`**${i + 1}. (${pct}%) ${r.title}**`);
+          const label = MATCH_LABELS[r.matchType] || '🔍';
+          const scoreText = r.matchType === 'date' ? '' : ` (${Math.round(r.score * 100)}%)`;
+          lines.push(`**${i + 1}. ${label}${scoreText} ${r.title}**`);
           lines.push(`　📄 \`${r.path}\``);
         });
 
